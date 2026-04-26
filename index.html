@@ -341,6 +341,137 @@
     flex-wrap: wrap;
   }
 
+  /* Teacher dashboard */
+  .teacher-grid {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .qr-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--background);
+  }
+  .qr-box canvas, .qr-box img { width: 100% !important; height: auto !important; max-width: 240px; }
+  .session-code {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+  }
+  .join-url {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    word-break: break-all;
+    text-align: center;
+  }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    background: var(--background);
+  }
+  .stat-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted-foreground);
+    margin-bottom: 4px;
+  }
+  .stat-val {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+  .dist {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 80px;
+    margin: 8px 0 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .dist .bar {
+    flex: 1;
+    background: var(--primary);
+    border-radius: 3px 3px 0 0;
+    min-height: 2px;
+    position: relative;
+    opacity: 0.85;
+  }
+  .dist .bar span {
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.7rem;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .dist-axis {
+    display: flex;
+    gap: 4px;
+    font-size: 0.65rem;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .dist-axis div { flex: 1; text-align: center; }
+  .submissions {
+    max-height: 280px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+  }
+  .sub-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.875rem;
+    align-items: center;
+  }
+  .sub-row:last-child { border-bottom: none; }
+  .sub-name { font-weight: 500; }
+  .sub-score { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .sub-time { color: var(--muted-foreground); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+  .live-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: hsl(142 71% 45%);
+    border-radius: 50%;
+    margin-right: 6px;
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  .submit-status {
+    margin-top: 12px;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    text-align: center;
+  }
+  .submit-status.ok { color: hsl(142 71% 30%); }
+  .submit-status.err { color: var(--destructive); }
+
+  @media (max-width: 720px) {
+    .teacher-grid { grid-template-columns: 1fr; }
+    .screen.teacher-screen { max-width: 560px; }
+  }
   @media (max-width: 520px) {
     .card { padding: 28px; }
     .answers { grid-template-columns: 1fr; }
@@ -357,7 +488,12 @@
     <div class="card-header">
       <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">📱</div>
       <h1 class="card-title">你有網路成癮嗎？</h1>
-      <p class="card-description">10 題小測驗，誠實回答，看看你和網路的關係。</p>
+      <p class="card-description" id="introDesc">10 題小測驗，誠實回答，看看你和網路的關係。</p>
+    </div>
+    <div class="field" id="nameField" style="display:none">
+      <label class="label" for="playerName">你的名字 / 暱稱</label>
+      <input id="playerName" type="text" maxlength="20" placeholder="例如：小明" style="height:40px;width:100%;padding:0 12px;border:1px solid var(--input);border-radius:var(--radius);background:var(--background);font-size:0.875rem;font-family:inherit" />
+      <span class="label-hint">老師會在大螢幕看到你的名字與分數</span>
     </div>
     <div class="field">
       <label class="label" for="duration">每題作答秒數</label>
@@ -365,6 +501,45 @@
       <span class="label-hint">時間到會自動進入下一題（5–120 秒）</span>
     </div>
     <button class="btn-primary btn-block" id="startBtn">開始測驗</button>
+    <div style="margin-top:14px;text-align:center">
+      <a href="?role=teacher" id="teacherLink" style="font-size:0.75rem;color:var(--muted-foreground);text-decoration:none">老師模式 →</a>
+    </div>
+  </div>
+</section>
+
+<!-- Teacher dashboard -->
+<section id="teacher" class="screen teacher-screen">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.5rem;margin-bottom:8px;line-height:1">👩‍🏫</div>
+      <h1 class="card-title">老師控制台</h1>
+      <p class="card-description"><span class="live-dot"></span>學生掃 QR 加入，即時看到結果。</p>
+    </div>
+    <div class="teacher-grid">
+      <div class="qr-box">
+        <div id="qrcode"></div>
+        <div class="session-code">場次 <span id="sessionCode">—</span></div>
+        <div class="join-url" id="joinUrl">—</div>
+        <button class="btn-outline" id="copyJoinBtn" style="width:100%;margin-top:4px">複製連結</button>
+      </div>
+      <div>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">參與人數</div><div class="stat-val" id="statCount">0</div></div>
+          <div class="stat"><div class="stat-label">平均分</div><div class="stat-val" id="statAvg">—</div></div>
+          <div class="stat"><div class="stat-label">最高/最低</div><div class="stat-val" id="statRange">—</div></div>
+        </div>
+        <div class="breakdown-title">分數分布</div>
+        <div class="dist" id="distChart"></div>
+        <div class="dist-axis" id="distAxis"></div>
+        <div class="breakdown-title" style="margin-top:18px">最新提交</div>
+        <div class="submissions" id="submissions"><div style="padding:20px;text-align:center;color:var(--muted-foreground);font-size:0.875rem">等待第一筆作答…</div></div>
+        <div class="submit-status" id="teacherStatus"></div>
+      </div>
+    </div>
+    <div class="actions" style="margin-top:20px">
+      <button class="btn-outline" id="newSessionBtn">建立新場次</button>
+      <button class="btn-ghost" id="refreshBtn">立即刷新</button>
+    </div>
   </div>
 </section>
 
@@ -431,7 +606,17 @@
   </div>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
+  // ====== CONFIG ======
+  // Paste your Google Apps Script Web App URL here after deployment.
+  const WEB_APP_URL = "";
+  // ====================
+
+  const params = new URLSearchParams(location.search);
+  const role = params.get("role");
+  const sessionId = params.get("session");
+
   const QUESTIONS = [
     { emoji: "⏰", text: "你常常上網時間比原本預計的還久嗎？" },
     { emoji: "🍱", text: "你曾因為上網而忽略吃飯、睡覺或重要的事嗎？" },
@@ -449,7 +634,8 @@
     intro: document.getElementById("intro"),
     quiz: document.getElementById("quiz"),
     done: document.getElementById("done"),
-    result: document.getElementById("result")
+    result: document.getElementById("result"),
+    teacher: document.getElementById("teacher")
   };
   const show = (name) => {
     Object.values(screens).forEach(s => s.classList.remove("active"));
@@ -459,6 +645,8 @@
   let current = 0;
   let answers = new Array(QUESTIONS.length).fill(null);
   let duration = 20;
+  let playerName = "";
+  let submitted = false;
   let timeLeft = 20;
   let timerId = null;
   let paused = false;
@@ -467,6 +655,14 @@
   document.getElementById("timerFg").setAttribute("stroke-dasharray", CIRC);
 
   document.getElementById("startBtn").addEventListener("click", () => {
+    if (sessionId) {
+      const name = (document.getElementById("playerName").value || "").trim();
+      if (!name) {
+        document.getElementById("playerName").focus();
+        return;
+      }
+      playerName = name;
+    }
     duration = Math.max(5, Math.min(120, parseInt(document.getElementById("duration").value) || 20));
     current = 0;
     answers.fill(null);
@@ -553,8 +749,27 @@
     renderQuestion();
   }
 
+  async function submitToBackend(score) {
+    if (!sessionId || !WEB_APP_URL || submitted) return;
+    submitted = true;
+    try {
+      await fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          session: sessionId,
+          name: playerName,
+          score: score,
+          answers: answers
+        })
+      });
+    } catch (e) {
+      console.warn("submit failed", e);
+    }
+  }
+
   function showResult() {
     const score = answers.filter(a => a === 1).length;
+    submitToBackend(score);
     document.getElementById("scoreNum").textContent = score;
 
     let level, desc, emoji, cls;
@@ -592,6 +807,122 @@
     });
 
     show("result");
+  }
+
+  // ===== Session / Teacher mode =====
+  function randomSession() {
+    const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+    let s = "";
+    for (let i = 0; i < 5; i++) s += chars[Math.floor(Math.random() * chars.length)];
+    return s;
+  }
+
+  function buildJoinUrl(sid) {
+    const u = new URL(location.href);
+    u.search = "";
+    u.searchParams.set("session", sid);
+    return u.toString();
+  }
+
+  let teacherSession = null;
+  let pollTimer = null;
+
+  async function fetchResults() {
+    if (!WEB_APP_URL || !teacherSession) return;
+    try {
+      const res = await fetch(`${WEB_APP_URL}?action=results&session=${encodeURIComponent(teacherSession)}`);
+      const data = await res.json();
+      renderTeacher(data);
+      document.getElementById("teacherStatus").className = "submit-status ok";
+      document.getElementById("teacherStatus").textContent = `已連線 · 最後更新 ${new Date().toLocaleTimeString()}`;
+    } catch (e) {
+      document.getElementById("teacherStatus").className = "submit-status err";
+      document.getElementById("teacherStatus").textContent = "無法連線後端，請確認 WEB_APP_URL 設定";
+    }
+  }
+
+  function renderTeacher(data) {
+    const subs = data.submissions || [];
+    document.getElementById("statCount").textContent = subs.length;
+    if (subs.length) {
+      const scores = subs.map(s => s.score);
+      const avg = (scores.reduce((a,b)=>a+b,0) / scores.length).toFixed(1);
+      document.getElementById("statAvg").textContent = avg;
+      document.getElementById("statRange").textContent = `${Math.max(...scores)} / ${Math.min(...scores)}`;
+    } else {
+      document.getElementById("statAvg").textContent = "—";
+      document.getElementById("statRange").textContent = "—";
+    }
+
+    const buckets = new Array(11).fill(0);
+    subs.forEach(s => { if (s.score >= 0 && s.score <= 10) buckets[s.score]++; });
+    const max = Math.max(1, ...buckets);
+    const chart = document.getElementById("distChart");
+    chart.innerHTML = buckets.map(c => `<div class="bar" style="height:${(c/max)*100}%"><span>${c||""}</span></div>`).join("");
+    document.getElementById("distAxis").innerHTML = buckets.map((_,i)=>`<div>${i}</div>`).join("");
+
+    const wrap = document.getElementById("submissions");
+    if (!subs.length) {
+      wrap.innerHTML = `<div style="padding:20px;text-align:center;color:var(--muted-foreground);font-size:0.875rem">等待第一筆作答…</div>`;
+    } else {
+      const sorted = subs.slice().sort((a,b)=>new Date(b.time)-new Date(a.time));
+      wrap.innerHTML = sorted.map(s => {
+        const t = new Date(s.time);
+        const tStr = isNaN(t) ? "" : t.toLocaleTimeString();
+        const cls = s.score >= 8 ? "level-bad" : s.score >= 4 ? "level-warn" : "level-good";
+        return `<div class="sub-row"><div class="sub-name">${escapeHtml(s.name||"匿名")}</div><div class="sub-score"><span class="result-level ${cls}">${s.score}/10</span></div><div class="sub-time">${tStr}</div></div>`;
+      }).join("");
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function startTeacher(sid) {
+    teacherSession = sid;
+    const url = buildJoinUrl(sid);
+    document.getElementById("sessionCode").textContent = sid;
+    document.getElementById("joinUrl").textContent = url;
+    const qrEl = document.getElementById("qrcode");
+    qrEl.innerHTML = "";
+    if (window.QRCode && QRCode.toCanvas) {
+      const c = document.createElement("canvas");
+      qrEl.appendChild(c);
+      QRCode.toCanvas(c, url, { width: 240, margin: 1 }, () => {});
+    } else {
+      qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(url)}" />`;
+    }
+    history.replaceState(null, "", `?role=teacher&session=${sid}`);
+    if (!WEB_APP_URL) {
+      document.getElementById("teacherStatus").className = "submit-status err";
+      document.getElementById("teacherStatus").textContent = "⚠️ 尚未設定 WEB_APP_URL，請先部署 Apps Script 並填入。";
+    }
+    fetchResults();
+    clearInterval(pollTimer);
+    pollTimer = setInterval(fetchResults, 4000);
+  }
+
+  document.getElementById("copyJoinBtn").addEventListener("click", () => {
+    const url = document.getElementById("joinUrl").textContent;
+    navigator.clipboard.writeText(url);
+    const b = document.getElementById("copyJoinBtn");
+    const o = b.textContent; b.textContent = "已複製 ✓";
+    setTimeout(()=>b.textContent=o, 1400);
+  });
+  document.getElementById("newSessionBtn").addEventListener("click", () => {
+    startTeacher(randomSession());
+  });
+  document.getElementById("refreshBtn").addEventListener("click", fetchResults);
+
+  // ===== Routing =====
+  if (role === "teacher") {
+    show("teacher");
+    startTeacher(sessionId || randomSession());
+  } else if (sessionId) {
+    document.getElementById("nameField").style.display = "flex";
+    document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
+    document.getElementById("teacherLink").style.display = "none";
   }
 </script>
 </body>
