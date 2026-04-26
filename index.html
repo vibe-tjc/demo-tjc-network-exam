@@ -436,6 +436,22 @@
     color: var(--muted-foreground);
   }
   .tq-self-progress.done { color: hsl(142 71% 30%); }
+  .tq-self-result {
+    display: none;
+    margin-top: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--muted);
+    gap: 10px;
+    align-items: center;
+  }
+  .tq-self-result.show { display: flex; }
+  .tq-self-result .emoji { font-size: 1.75rem; line-height: 1; }
+  .tq-self-result .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .tq-self-result .head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tq-self-result .score { font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tq-self-result .desc { font-size: 0.8125rem; color: var(--muted-foreground); line-height: 1.45; }
   .qr-box {
     display: flex;
     flex-direction: column;
@@ -600,8 +616,8 @@
   <div class="card">
     <div class="card-header">
       <div style="font-size:1.5rem;margin-bottom:8px;line-height:1">👩‍🏫</div>
-      <h1 class="card-title">老師控制台</h1>
-      <p class="card-description"><span class="live-dot"></span>學生掃 QR 加入，即時看到結果。</p>
+      <h1 class="card-title">網路使用習慣調查表</h1>
+      <p class="card-description"><span class="live-dot"></span>可以掃 QR 加入一起測驗。</p>
     </div>
     <div class="teacher-grid" id="teacherGrid">
       <div class="qr-box">
@@ -644,6 +660,13 @@
             <div class="tq-self-progress" id="tqSelfProgress">
               <span id="tqSelfStatus">已作答 0 / 10</span>
               <button class="btn-primary" id="tqSelfSubmit" style="height:32px;font-size:0.8125rem;padding:0 14px" disabled>送出我的結果</button>
+            </div>
+            <div class="tq-self-result" id="tqSelfResult">
+              <div class="emoji" id="tqSelfEmoji">🌿</div>
+              <div class="body">
+                <div class="head"><span class="score"><span id="tqSelfScore">0</span> / 10</span><span class="result-level" id="tqSelfLevel">健康</span></div>
+                <div class="desc" id="tqSelfDesc"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -1021,28 +1044,18 @@
 
   window.addEventListener("online", flushQueue);
 
+  function assessScore(score) {
+    if (score >= 8) return { level: "重度網路成癮", emoji: "🚨", cls: "level-bad", desc: "你的網路依賴程度偏高，建議認真規劃離線時光，必要時尋求專業協助。" };
+    if (score >= 4) return { level: "輕度網路成癮", emoji: "⚠️", cls: "level-warn", desc: "有點黏網路了。試著設定使用時間、培養離線興趣，平衡生活節奏。" };
+    return { level: "健康使用", emoji: "🌿", cls: "level-good", desc: "你和網路保持著健康距離，繼續享受真實世界的美好。" };
+  }
+
   function showResult() {
     const score = answers.filter(a => a === 1).length;
     submitToBackend(score);
     document.getElementById("scoreNum").textContent = score;
 
-    let level, desc, emoji, cls;
-    if (score >= 8) {
-      level = "重度網路成癮";
-      emoji = "🚨";
-      cls = "level-bad";
-      desc = "你的網路依賴程度偏高，建議認真規劃離線時光，必要時尋求專業協助。";
-    } else if (score >= 4) {
-      level = "輕度網路成癮";
-      emoji = "⚠️";
-      cls = "level-warn";
-      desc = "有點黏網路了。試著設定使用時間、培養離線興趣，平衡生活節奏。";
-    } else {
-      level = "健康使用";
-      emoji = "🌿";
-      cls = "level-good";
-      desc = "你和網路保持著健康距離，繼續享受真實世界的美好。";
-    }
+    const { level, desc, emoji, cls } = assessScore(score);
 
     document.getElementById("resultEmoji").textContent = emoji;
     const lvl = document.getElementById("resultLevel");
@@ -1128,18 +1141,29 @@
     const status = document.getElementById("tqSelfStatus");
     const submit = document.getElementById("tqSelfSubmit");
     const wrap = document.getElementById("tqSelfProgress");
+    const resultBox = document.getElementById("tqSelfResult");
     if (teacherOwnSubmitted) {
       status.textContent = "已送出 ✓";
       wrap.classList.add("done");
       submit.disabled = true;
       submit.textContent = "已送出";
       yesBtn.disabled = true; noBtn.disabled = true;
+      const score = teacherOwnAnswers.filter(a => a === 1).length;
+      const { level, desc, emoji, cls } = assessScore(score);
+      document.getElementById("tqSelfScore").textContent = score;
+      document.getElementById("tqSelfEmoji").textContent = emoji;
+      const lvl = document.getElementById("tqSelfLevel");
+      lvl.textContent = level;
+      lvl.className = "result-level " + cls;
+      document.getElementById("tqSelfDesc").textContent = desc;
+      resultBox.classList.add("show");
     } else {
       status.textContent = `已作答 ${filled} / ${QUESTIONS.length}`;
       wrap.classList.toggle("done", filled === QUESTIONS.length);
       submit.disabled = filled !== QUESTIONS.length;
       submit.textContent = "送出我的結果";
       yesBtn.disabled = false; noBtn.disabled = false;
+      resultBox.classList.remove("show");
     }
   }
 
