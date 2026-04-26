@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>你有網路成癮嗎？</title>
+<style>
+  :root {
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(240 10% 3.9%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(240 10% 3.9%);
+    --muted: hsl(240 4.8% 95.9%);
+    --muted-foreground: hsl(240 3.8% 46.1%);
+    --primary: hsl(240 5.9% 10%);
+    --primary-foreground: hsl(0 0% 98%);
+    --secondary: hsl(240 4.8% 95.9%);
+    --secondary-foreground: hsl(240 5.9% 10%);
+    --accent: hsl(240 4.8% 95.9%);
+    --accent-foreground: hsl(240 5.9% 10%);
+    --destructive: hsl(0 72% 51%);
+    --destructive-foreground: hsl(0 0% 98%);
+    --success: hsl(142 71% 45%);
+    --success-foreground: hsl(0 0% 98%);
+    --warning: hsl(38 92% 50%);
+    --warning-foreground: hsl(48 96% 9%);
+    --border: hsl(240 5.9% 90%);
+    --input: hsl(240 5.9% 90%);
+    --ring: hsl(240 5.9% 10%);
+    --radius: 0.5rem;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    color: var(--foreground);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background: var(--background);
+    background-image:
+      radial-gradient(circle at 1px 1px, hsl(240 5.9% 90%) 1px, transparent 0);
+    background-size: 24px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .screen {
+    width: 100%;
+    max-width: 728px;
+    display: none;
+    animation: fadeIn 0.25s ease;
+  }
+  .screen.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .card {
+    background: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 42px;
+    box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  }
+  .card-header { margin-bottom: 24px; }
+  .card-title {
+    font-size: 1.95rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin-bottom: 6px;
+  }
+  .card-description {
+    font-size: 1.1rem;
+    color: var(--muted-foreground);
+    line-height: 1.55;
+  }
+
+  /* Button */
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 40px;
+    padding: 0 16px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+    white-space: nowrap;
+  }
+  button:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  .btn-primary {
+    background: var(--primary);
+    color: var(--primary-foreground);
+  }
+  .btn-primary:hover { background: hsl(240 5.9% 18%); }
+  .btn-outline {
+    background: var(--background);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+  .btn-outline:hover { background: var(--muted); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--foreground);
+  }
+  .btn-ghost:hover { background: var(--muted); }
+  .btn-icon {
+    width: 36px; height: 36px; padding: 0;
+  }
+  .btn-block { width: 100%; }
+
+  /* Input / label */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 20px;
+  }
+  .label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1;
+  }
+  .label-hint {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    margin-top: 2px;
+  }
+  input[type=number] {
+    height: 40px;
+    width: 100%;
+    padding: 0 12px;
+    border: 1px solid var(--input);
+    border-radius: var(--radius);
+    background: var(--background);
+    color: var(--foreground);
+    font-size: 0.875rem;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type=number]:focus {
+    outline: none;
+    border-color: var(--ring);
+    box-shadow: 0 0 0 3px hsl(240 5.9% 10% / 0.1);
+  }
+
+  /* Progress */
+  .progress-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .progress-text {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    min-width: 56px;
+  }
+  .progress-bar {
+    flex: 1;
+    height: 6px;
+    background: var(--muted);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--primary);
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+
+  /* Quiz */
+  .q-card { position: relative; }
+  .q-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--secondary);
+    color: var(--secondary-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .timer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+  .timer-ring { position: relative; width: 28px; height: 28px; }
+  .timer-ring svg { transform: rotate(-90deg); display: block; }
+  .timer-ring circle { fill: none; stroke-width: 2.5; }
+  .timer-bg { stroke: var(--muted); }
+  .timer-fg {
+    stroke: var(--primary);
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear;
+  }
+
+  .q-emoji {
+    font-size: 3.6rem;
+    margin-bottom: 20px;
+    line-height: 1;
+  }
+  .q-text {
+    font-size: 1.625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.4;
+    margin-bottom: 28px;
+  }
+  .answers {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .answers button {
+    height: 60px;
+    background: var(--background);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    font-size: 1.2rem;
+    font-weight: 500;
+  }
+  .answers button:hover { background: var(--muted); }
+  .answers button.selected.yes {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--foreground);
+  }
+  .answers button.selected.no {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--foreground);
+  }
+
+  /* Result */
+  .result-head {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .result-emoji { font-size: 3.25rem; line-height: 1; }
+  .result-score {
+    font-size: 3.9rem;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+  }
+  .result-score .total {
+    font-size: 1.625rem;
+    color: var(--muted-foreground);
+    font-weight: 500;
+  }
+  .result-level {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid transparent;
+  }
+  .level-good { background: hsl(142 71% 45% / 0.1); color: hsl(142 71% 30%); border-color: hsl(142 71% 45% / 0.25); }
+  .level-warn { background: hsl(38 92% 50% / 0.1); color: hsl(38 92% 35%); border-color: hsl(38 92% 50% / 0.3); }
+  .level-bad  { background: hsl(0 72% 51% / 0.1); color: hsl(0 72% 45%); border-color: hsl(0 72% 51% / 0.3); }
+  .result-desc {
+    font-size: 1.1rem;
+    color: var(--muted-foreground);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .separator {
+    height: 1px;
+    background: var(--border);
+    margin: 20px 0;
+  }
+  .breakdown-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .breakdown {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 6px;
+    margin-bottom: 24px;
+  }
+  .dot {
+    aspect-ratio: 1;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.95rem;
+    background: var(--muted);
+    border: 1px solid var(--border);
+    opacity: 0.6;
+  }
+  .dot.hit {
+    background: var(--foreground);
+    border-color: var(--foreground);
+    opacity: 1;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  @media (max-width: 520px) {
+    .card { padding: 28px; }
+    .answers { grid-template-columns: 1fr; }
+    .breakdown { grid-template-columns: repeat(5, 1fr); }
+    .q-text { font-size: 1.45rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Intro -->
+<section id="intro" class="screen active">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">📱</div>
+      <h1 class="card-title">你有網路成癮嗎？</h1>
+      <p class="card-description">10 題小測驗，誠實回答，看看你和網路的關係。</p>
+    </div>
+    <div class="field">
+      <label class="label" for="duration">每題作答秒數</label>
+      <input id="duration" type="number" min="5" max="120" value="20" />
+      <span class="label-hint">時間到會自動進入下一題（5–120 秒）</span>
+    </div>
+    <button class="btn-primary btn-block" id="startBtn">開始測驗</button>
+  </div>
+</section>
+
+<!-- Quiz -->
+<section id="quiz" class="screen">
+  <div class="progress-wrap">
+    <span class="progress-text" id="progressText">1 / 10</span>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+  <div class="card q-card">
+    <div class="q-toolbar">
+      <span class="badge" id="qNum">Question 1</span>
+      <div class="timer">
+        <div class="timer-ring">
+          <svg width="28" height="28">
+            <circle class="timer-bg" cx="14" cy="14" r="11" />
+            <circle class="timer-fg" id="timerFg" cx="14" cy="14" r="11" stroke-dasharray="69.1" stroke-dashoffset="0" />
+          </svg>
+        </div>
+        <span id="timerNum">20</span><span>s</span>
+        <button class="btn-ghost btn-icon" id="pauseBtn" title="暫停/繼續" style="margin-left:4px">⏸</button>
+      </div>
+    </div>
+    <div class="q-emoji" id="qEmoji">📱</div>
+    <div class="q-text" id="qText">問題</div>
+    <div class="answers">
+      <button class="yes" data-val="1">是的，有</button>
+      <button class="no" data-val="0">沒有</button>
+    </div>
+  </div>
+</section>
+
+<!-- Done -->
+<section id="done" class="screen">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">✅</div>
+      <h1 class="card-title">全部回答完成</h1>
+      <p class="card-description">準備好查看你的測驗結果了嗎？</p>
+    </div>
+    <button class="btn-primary btn-block" id="showResultBtn">查看統計結果</button>
+  </div>
+</section>
+
+<!-- Result -->
+<section id="result" class="screen">
+  <div class="card">
+    <div class="result-head">
+      <div class="result-emoji" id="resultEmoji">🌿</div>
+      <div class="result-score"><span id="scoreNum">0</span><span class="total"> / 10</span></div>
+      <span class="result-level" id="resultLevel">健康</span>
+    </div>
+    <p class="result-desc" id="resultDesc"></p>
+
+    <div class="separator"></div>
+
+    <div class="breakdown-title">作答分布</div>
+    <div class="breakdown" id="breakdown"></div>
+
+    <div class="actions">
+      <button class="btn-primary" id="restartBtn">再測一次</button>
+      <button class="btn-outline" id="shareBtn">分享結果</button>
+    </div>
+  </div>
+</section>
+
+<script>
+  const QUESTIONS = [
+    { emoji: "⏰", text: "你常常上網時間比原本預計的還久嗎？" },
+    { emoji: "🍱", text: "你曾因為上網而忽略吃飯、睡覺或重要的事嗎？" },
+    { emoji: "📲", text: "一早起床第一件事就是檢查手機或社群嗎？" },
+    { emoji: "😤", text: "如果無法上網，會感到焦躁、不安或心情低落嗎？" },
+    { emoji: "🤫", text: "你曾向家人或朋友隱瞞自己的上網時間嗎？" },
+    { emoji: "💤", text: "上網時間影響到你的睡眠品質或精神狀態嗎？" },
+    { emoji: "📚", text: "上網讓你的工作、學業或成績明顯下滑嗎？" },
+    { emoji: "🙈", text: "你會用上網來逃避煩惱、壓力或負面情緒嗎？" },
+    { emoji: "🔁", text: "你曾試圖減少上網時間但失敗了嗎？" },
+    { emoji: "👥", text: "你寧可上網也不願意和真實朋友家人相處嗎？" }
+  ];
+
+  const screens = {
+    intro: document.getElementById("intro"),
+    quiz: document.getElementById("quiz"),
+    done: document.getElementById("done"),
+    result: document.getElementById("result")
+  };
+  const show = (name) => {
+    Object.values(screens).forEach(s => s.classList.remove("active"));
+    screens[name].classList.add("active");
+  };
+
+  let current = 0;
+  let answers = new Array(QUESTIONS.length).fill(null);
+  let duration = 20;
+  let timeLeft = 20;
+  let timerId = null;
+  let paused = false;
+
+  const CIRC = 2 * Math.PI * 11;
+  document.getElementById("timerFg").setAttribute("stroke-dasharray", CIRC);
+
+  document.getElementById("startBtn").addEventListener("click", () => {
+    duration = Math.max(5, Math.min(120, parseInt(document.getElementById("duration").value) || 20));
+    current = 0;
+    answers.fill(null);
+    show("quiz");
+    renderQuestion();
+  });
+
+  document.querySelectorAll(".answers button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const val = parseInt(btn.dataset.val);
+      answers[current] = val;
+      document.querySelectorAll(".answers button").forEach(b => b.classList.remove("selected"));
+      btn.classList.add("selected");
+      setTimeout(nextQuestion, 280);
+    });
+  });
+
+  document.getElementById("pauseBtn").addEventListener("click", () => {
+    paused = !paused;
+    document.getElementById("pauseBtn").textContent = paused ? "▶" : "⏸";
+  });
+
+  document.getElementById("showResultBtn").addEventListener("click", showResult);
+  document.getElementById("restartBtn").addEventListener("click", () => {
+    show("intro");
+  });
+  document.getElementById("shareBtn").addEventListener("click", () => {
+    const score = answers.filter(a => a === 1).length;
+    const text = `我做了網路成癮測驗，得分 ${score}/10！你也來測測看 👉`;
+    if (navigator.share) {
+      navigator.share({ title: "網路成癮測驗", text, url: location.href }).catch(()=>{});
+    } else {
+      navigator.clipboard.writeText(text + " " + location.href);
+      const btn = document.getElementById("shareBtn");
+      const orig = btn.textContent;
+      btn.textContent = "已複製 ✓";
+      setTimeout(() => btn.textContent = orig, 1600);
+    }
+  });
+
+  function renderQuestion() {
+    const q = QUESTIONS[current];
+    document.getElementById("qEmoji").textContent = q.emoji;
+    document.getElementById("qText").textContent = q.text;
+    document.getElementById("qNum").textContent = `Question ${current + 1}`;
+    document.getElementById("progressText").textContent = `${current + 1} / ${QUESTIONS.length}`;
+    document.getElementById("progressFill").style.width = ((current) / QUESTIONS.length * 100) + "%";
+    document.querySelectorAll(".answers button").forEach(b => {
+      b.classList.remove("selected");
+      if (answers[current] === parseInt(b.dataset.val)) b.classList.add("selected");
+    });
+    startTimer();
+  }
+
+  function startTimer() {
+    clearInterval(timerId);
+    timeLeft = duration;
+    updateTimerUI();
+    timerId = setInterval(() => {
+      if (paused) return;
+      timeLeft--;
+      updateTimerUI();
+      if (timeLeft <= 0) {
+        nextQuestion();
+      }
+    }, 1000);
+  }
+
+  function updateTimerUI() {
+    document.getElementById("timerNum").textContent = timeLeft;
+    const offset = CIRC * (1 - timeLeft / duration);
+    document.getElementById("timerFg").style.strokeDashoffset = offset;
+  }
+
+  function nextQuestion() {
+    clearInterval(timerId);
+    if (answers[current] === null) answers[current] = 0;
+    current++;
+    if (current >= QUESTIONS.length) {
+      document.getElementById("progressFill").style.width = "100%";
+      show("done");
+      return;
+    }
+    renderQuestion();
+  }
+
+  function showResult() {
+    const score = answers.filter(a => a === 1).length;
+    document.getElementById("scoreNum").textContent = score;
+
+    let level, desc, emoji, cls;
+    if (score >= 8) {
+      level = "重度網路成癮";
+      emoji = "🚨";
+      cls = "level-bad";
+      desc = "你的網路依賴程度偏高，建議認真規劃離線時光，必要時尋求專業協助。";
+    } else if (score >= 4) {
+      level = "輕度網路成癮";
+      emoji = "⚠️";
+      cls = "level-warn";
+      desc = "有點黏網路了。試著設定使用時間、培養離線興趣，平衡生活節奏。";
+    } else {
+      level = "健康使用";
+      emoji = "🌿";
+      cls = "level-good";
+      desc = "你和網路保持著健康距離，繼續享受真實世界的美好。";
+    }
+
+    document.getElementById("resultEmoji").textContent = emoji;
+    const lvl = document.getElementById("resultLevel");
+    lvl.textContent = level;
+    lvl.className = "result-level " + cls;
+    document.getElementById("resultDesc").textContent = desc;
+
+    const bd = document.getElementById("breakdown");
+    bd.innerHTML = "";
+    QUESTIONS.forEach((q, i) => {
+      const d = document.createElement("div");
+      d.className = "dot" + (answers[i] === 1 ? " hit" : "");
+      d.textContent = q.emoji;
+      d.title = `Q${i+1}: ${answers[i] === 1 ? "符合" : "不符合"}`;
+      bd.appendChild(d);
+    });
+
+    show("result");
+  }
+</script>
+</body>
+</html>
