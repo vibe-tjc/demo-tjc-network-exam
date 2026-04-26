@@ -396,6 +396,47 @@
   .tq-bar-count { width: 60px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .tq-nav { display: flex; gap: 8px; justify-content: space-between; }
   .tq-nav button { flex: 1; }
+  .tq-self {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .tq-self-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    margin-bottom: 8px;
+  }
+  .tq-self-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .tq-self-buttons button {
+    height: 42px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .tq-self-buttons button:hover { background: var(--muted); }
+  .tq-self-buttons button.selected {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--foreground);
+  }
+  .tq-self-progress {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+  }
+  .tq-self-progress.done { color: hsl(142 71% 30%); }
   .qr-box {
     display: flex;
     flex-direction: column;
@@ -597,6 +638,17 @@
           <div class="tq-nav">
             <button class="btn-outline" id="tqPrev">← 上一題</button>
             <button class="btn-primary" id="tqNext">下一題 →</button>
+          </div>
+          <div class="tq-self">
+            <div class="tq-self-label">老師也作答（選擇指向你自己）</div>
+            <div class="tq-self-buttons">
+              <button id="tqSelfYes" data-val="1">是的，有</button>
+              <button id="tqSelfNo" data-val="0">沒有</button>
+            </div>
+            <div class="tq-self-progress" id="tqSelfProgress">
+              <span id="tqSelfStatus">已作答 0 / 10</span>
+              <button class="btn-primary" id="tqSelfSubmit" style="height:32px;font-size:0.8125rem;padding:0 14px" disabled>送出我的結果</button>
+            </div>
           </div>
         </div>
         <div class="stats">
@@ -1060,6 +1112,40 @@
 
   let teacherCurrentQ = 0;
   let lastSubmissions = [];
+  let teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+  let teacherOwnAttemptId = "";
+  let teacherOwnSubmitted = false;
+
+  function resetTeacherOwnQuiz() {
+    teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+    teacherOwnAttemptId = uuid();
+    teacherOwnSubmitted = false;
+  }
+
+  function renderTeacherSelf() {
+    const i = teacherCurrentQ;
+    const yesBtn = document.getElementById("tqSelfYes");
+    const noBtn  = document.getElementById("tqSelfNo");
+    yesBtn.classList.toggle("selected", teacherOwnAnswers[i] === 1);
+    noBtn.classList.toggle("selected",  teacherOwnAnswers[i] === 0);
+    const filled = teacherOwnAnswers.filter(a => a !== null).length;
+    const status = document.getElementById("tqSelfStatus");
+    const submit = document.getElementById("tqSelfSubmit");
+    const wrap = document.getElementById("tqSelfProgress");
+    if (teacherOwnSubmitted) {
+      status.textContent = "已送出 ✓";
+      wrap.classList.add("done");
+      submit.disabled = true;
+      submit.textContent = "已送出";
+      yesBtn.disabled = true; noBtn.disabled = true;
+    } else {
+      status.textContent = `已作答 ${filled} / ${QUESTIONS.length}`;
+      wrap.classList.toggle("done", filled === QUESTIONS.length);
+      submit.disabled = filled !== QUESTIONS.length;
+      submit.textContent = "送出我的結果";
+      yesBtn.disabled = false; noBtn.disabled = false;
+    }
+  }
 
   function renderTeacherQuestion() {
     const i = teacherCurrentQ;
@@ -1077,6 +1163,7 @@
     document.getElementById("tqNoFill").style.width  = (total ? (no  / total) * 100 : 0) + "%";
     document.getElementById("tqPrev").disabled = i === 0;
     document.getElementById("tqNext").disabled = i === QUESTIONS.length - 1;
+    renderTeacherSelf();
   }
 
   function renderTeacher(data) {
@@ -1133,6 +1220,9 @@
       qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
     history.replaceState(null, "", `?role=teacher&session=${sid}&token=${tok}`);
+    resetTeacherOwnQuiz();
+    teacherCurrentQ = 0;
+    renderTeacherQuestion();
     fetchResults();
     clearInterval(pollTimer);
     pollTimer = setInterval(fetchResults, 4000);
@@ -1178,6 +1268,47 @@
   });
   document.getElementById("tqNext").addEventListener("click", () => {
     if (teacherCurrentQ < QUESTIONS.length - 1) { teacherCurrentQ++; renderTeacherQuestion(); }
+  });
+
+  function selectTeacherAnswer(val) {
+    if (teacherOwnSubmitted) return;
+    teacherOwnAnswers[teacherCurrentQ] = val;
+    renderTeacherSelf();
+    if (teacherCurrentQ < QUESTIONS.length - 1) {
+      setTimeout(() => { teacherCurrentQ++; renderTeacherQuestion(); }, 220);
+    }
+  }
+  document.getElementById("tqSelfYes").addEventListener("click", () => selectTeacherAnswer(1));
+  document.getElementById("tqSelfNo").addEventListener("click",  () => selectTeacherAnswer(0));
+
+  document.getElementById("tqSelfSubmit").addEventListener("click", async () => {
+    if (teacherOwnAnswers.some(a => a === null) || teacherOwnSubmitted) return;
+    if (!teacherSession || !teacherToken) { alert("尚未建立場次"); return; }
+    const btn = document.getElementById("tqSelfSubmit");
+    btn.disabled = true;
+    btn.textContent = "送出中…";
+    try {
+      const r = await trySend({
+        session: teacherSession,
+        token: teacherToken,
+        name: "老師",
+        answers: teacherOwnAnswers,
+        attemptId: teacherOwnAttemptId
+      });
+      if (r.ok) {
+        teacherOwnSubmitted = true;
+        renderTeacherSelf();
+        fetchResults();
+      } else {
+        btn.disabled = false;
+        btn.textContent = "送出我的結果";
+        alert("送出失敗：" + errorMessage(r.error));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "送出我的結果";
+      alert("網路錯誤，請重試");
+    }
   });
   document.addEventListener("keydown", (e) => {
     if (!screens.teacher.classList.contains("active")) return;
