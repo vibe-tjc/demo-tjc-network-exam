@@ -594,9 +594,6 @@
       <span class="label-hint">時間到會自動進入下一題（5–120 秒）</span>
     </div>
     <button class="btn-primary btn-block" id="startBtn">開始測驗</button>
-    <div style="margin-top:14px;text-align:center">
-      <a href="?role=teacher" id="teacherLink" style="font-size:0.75rem;color:var(--muted-foreground);text-decoration:none">老師模式 →</a>
-    </div>
   </div>
 </section>
 
@@ -1344,7 +1341,10 @@
   });
 
   // ===== Routing =====
-  if (role === "teacher") {
+  // Teacher mode is the default. Students arrive via ?session=X&token=Y from the QR code.
+  // Teacher mode keeps ?role=teacher in the URL to distinguish from student joins.
+  const isTeacher = role === "teacher" || !sessionId;
+  if (isTeacher) {
     if (!getTeacherKey()) {
       show("teacherLogin");
     } else if (sessionId && sessionToken) {
@@ -1357,7 +1357,6 @@
   } else if (sessionId) {
     document.getElementById("nameField").style.display = "flex";
     document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
-    document.getElementById("teacherLink").style.display = "none";
     if (!sessionToken) {
       document.getElementById("introDesc").textContent = `連結缺少場次驗證碼，請請老師重新提供 QR / 連結。`;
       document.getElementById("startBtn").disabled = true;
