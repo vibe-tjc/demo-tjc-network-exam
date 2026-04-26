@@ -2,39 +2,71 @@
 // Setup:
 // 1. Create a new Google Sheet.
 // 2. Extensions → Apps Script. Replace Code.gs contents with this file.
-// 3. Deploy → New deployment → Type: Web app.
+// 3. Set SHARED_SECRET below to a random string. The same value must be set
+//    in index.html (SHARED_SECRET constant).
+// 4. Deploy → New deployment → Type: Web app.
 //    - Execute as: Me
 //    - Who has access: Anyone
-// 4. Copy the Web App URL into index.html (WEB_APP_URL constant).
-// 5. Re-deploy whenever you change this script (or use "Manage deployments" → edit → New version).
+// 5. Copy the Web App URL into index.html (WEB_APP_URL constant).
+// 6. Re-deploy whenever you change this script: Manage deployments → edit → New version.
 
 const SHEET_NAME = 'Responses';
+const SHARED_SECRET = 'CHANGE_ME_TO_A_RANDOM_STRING';
 
 function doGet(e) {
-  const action = (e.parameter && e.parameter.action) || '';
-  const session = (e.parameter && e.parameter.session) || '';
-  if (action === 'results') return json(getResults(session));
+  const params = (e && e.parameter) || {};
+  const action = params.action || '';
+  const session = params.session || '';
+  const key = params.key || '';
+  if (action === 'results') {
+    if (key !== SHARED_SECRET) return json({ ok: false, error: 'unauthorized' });
+    return json(getResults(session));
+  }
   return json({ ok: true, msg: 'quiz backend alive' });
 }
 
 function doPost(e) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (err) {
+    return json({ ok: false, error: 'busy, try again' });
+  }
   try {
     const data = JSON.parse(e.postData.contents);
-    appendRow(data);
+    if (data.key !== SHARED_SECRET) return json({ ok: false, error: 'unauthorized' });
+    const attemptId = String(data.attemptId || '');
+    if (!attemptId) return json({ ok: false, error: 'missing attemptId' });
+    if (attemptIdExists(attemptId)) return json({ ok: true, dedup: true });
+    appendRow(data, attemptId);
     return json({ ok: true });
   } catch (err) {
     return json({ ok: false, error: String(err) });
+  } finally {
+    lock.releaseLock();
   }
 }
 
-function appendRow(data) {
+function attemptIdExists(id) {
+  const sheet = getSheet();
+  const last = sheet.getLastRow();
+  if (last < 2) return false;
+  const ids = sheet.getRange(2, 6, last - 1, 1).getValues();
+  for (let i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === id) return true;
+  }
+  return false;
+}
+
+function appendRow(data, attemptId) {
   const sheet = getSheet();
   sheet.appendRow([
     new Date(),
     data.session || '',
     data.name || '',
     Number(data.score) || 0,
-    (data.answers || []).join(',')
+    (data.answers || []).join(','),
+    attemptId
   ]);
 }
 
@@ -48,12 +80,7 @@ function getResults(session) {
     score: Number(r[3]) || 0,
     answers: String(r[4] || '').split(',').filter(Boolean).map(Number)
   }));
-  return {
-    ok: true,
-    session: session,
-    count: submissions.length,
-    submissions: submissions
-  };
+  return { ok: true, session: session, count: submissions.length, submissions: submissions };
 }
 
 function getSheet() {
@@ -61,7 +88,7 @@ function getSheet() {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['Time', 'Session', 'Name', 'Score', 'Answers']);
+    sheet.appendRow(['Time', 'Session', 'Name', 'Score', 'Answers', 'AttemptId']);
     sheet.setFrozenRows(1);
   }
   return sheet;

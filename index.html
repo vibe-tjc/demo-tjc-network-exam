@@ -358,12 +358,15 @@
     border-radius: var(--radius);
     background: var(--background);
   }
-  .qr-box canvas, .qr-box img { width: 100% !important; height: auto !important; max-width: 240px; }
+  .qr-box canvas, .qr-box img { width: 100% !important; height: auto !important; max-width: 300px; }
   .session-code {
     font-family: ui-monospace, SFMono-Regular, monospace;
-    font-size: 1.05rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    background: var(--muted);
+    padding: 6px 14px;
+    border-radius: 6px;
   }
   .join-url {
     font-size: 0.75rem;
@@ -587,6 +590,7 @@
 <!-- Result -->
 <section id="result" class="screen">
   <div class="card">
+    <div class="submit-status" id="submitStatus" style="margin:0 0 16px 0"></div>
     <div class="result-head">
       <div class="result-emoji" id="resultEmoji">🌿</div>
       <div class="result-score"><span id="scoreNum">0</span><span class="total"> / 10</span></div>
@@ -610,8 +614,17 @@
 <script>
   // ====== CONFIG ======
   // Paste your Google Apps Script Web App URL here after deployment.
-  const WEB_APP_URL = "";
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyIrGqCinOHsdGNHUBPMdcFJiKrKINcg4nuAUbx2JNteM-RGrXPovMi6AP38Y_jNHdI/exec";
+  // Must match SHARED_SECRET in apps-script/Code.gs
+  const SHARED_SECRET = "CHANGE_ME_TO_A_RANDOM_STRING";
   // ====================
+
+  function uuid() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c/4).toString(16)
+    );
+  }
 
   const params = new URLSearchParams(location.search);
   const role = params.get("role");
@@ -647,6 +660,32 @@
   let duration = 20;
   let playerName = "";
   let submitted = false;
+  let attemptId = "";
+
+  const STATE_KEY = sessionId ? `quiz:state:${sessionId}` : null;
+  const PENDING_KEY = "quiz:pending";
+
+  function saveState() {
+    if (!STATE_KEY) return;
+    localStorage.setItem(STATE_KEY, JSON.stringify({
+      current, answers, attemptId, playerName, duration, submitted
+    }));
+  }
+  function loadState() {
+    if (!STATE_KEY) return null;
+    try { return JSON.parse(localStorage.getItem(STATE_KEY) || "null"); } catch { return null; }
+  }
+  function clearState() { if (STATE_KEY) localStorage.removeItem(STATE_KEY); }
+
+  function getPending() {
+    try { return JSON.parse(localStorage.getItem(PENDING_KEY) || "[]"); } catch { return []; }
+  }
+  function setPending(arr) { localStorage.setItem(PENDING_KEY, JSON.stringify(arr)); }
+  function enqueuePending(payload) {
+    const q = getPending();
+    if (!q.find(p => p.attemptId === payload.attemptId)) { q.push(payload); setPending(q); }
+  }
+  function dequeuePending(id) { setPending(getPending().filter(p => p.attemptId !== id)); }
   let timeLeft = 20;
   let timerId = null;
   let paused = false;
@@ -657,15 +696,15 @@
   document.getElementById("startBtn").addEventListener("click", () => {
     if (sessionId) {
       const name = (document.getElementById("playerName").value || "").trim();
-      if (!name) {
-        document.getElementById("playerName").focus();
-        return;
-      }
+      if (!name) { document.getElementById("playerName").focus(); return; }
       playerName = name;
     }
     duration = Math.max(5, Math.min(120, parseInt(document.getElementById("duration").value) || 20));
     current = 0;
     answers.fill(null);
+    submitted = false;
+    attemptId = uuid();
+    saveState();
     show("quiz");
     renderQuestion();
   });
@@ -674,6 +713,7 @@
     btn.addEventListener("click", () => {
       const val = parseInt(btn.dataset.val);
       answers[current] = val;
+      saveState();
       document.querySelectorAll(".answers button").forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
       setTimeout(nextQuestion, 280);
@@ -749,23 +789,58 @@
     renderQuestion();
   }
 
-  async function submitToBackend(score) {
-    if (!sessionId || !WEB_APP_URL || submitted) return;
-    submitted = true;
-    try {
-      await fetch(WEB_APP_URL, {
-        method: "POST",
-        body: JSON.stringify({
-          session: sessionId,
-          name: playerName,
-          score: score,
-          answers: answers
-        })
-      });
-    } catch (e) {
-      console.warn("submit failed", e);
+  function updateSubmitStatus() {
+    const el = document.getElementById("submitStatus");
+    if (!el || !sessionId) return;
+    const q = getPending();
+    const mine = q.find(p => p.attemptId === attemptId);
+    if (!mine) {
+      el.textContent = submitted ? "已送出 ✓" : "";
+      el.className = "submit-status ok";
+    } else {
+      el.textContent = `網路不穩定，將自動重試…`;
+      el.className = "submit-status err";
     }
   }
+
+  async function trySend(payload) {
+    const res = await fetch(WEB_APP_URL, { method: "POST", body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "send failed");
+    return data;
+  }
+
+  async function flushQueue() {
+    if (!WEB_APP_URL) return;
+    const q = getPending();
+    for (const p of q) {
+      try { await trySend(p); dequeuePending(p.attemptId); }
+      catch (e) { /* keep, retry later */ }
+    }
+    updateSubmitStatus();
+  }
+
+  let retryTimers = [];
+  async function submitToBackend(score) {
+    if (!sessionId || !WEB_APP_URL) return;
+    const payload = {
+      key: SHARED_SECRET,
+      session: sessionId,
+      name: playerName,
+      score: score,
+      answers: answers,
+      attemptId: attemptId
+    };
+    enqueuePending(payload);
+    submitted = true;
+    saveState();
+    updateSubmitStatus();
+    flushQueue();
+    retryTimers.forEach(clearTimeout);
+    retryTimers = [3000, 8000, 20000, 60000].map(ms => setTimeout(flushQueue, ms));
+  }
+
+  window.addEventListener("online", flushQueue);
 
   function showResult() {
     const score = answers.filter(a => a === 1).length;
@@ -830,7 +905,7 @@
   async function fetchResults() {
     if (!WEB_APP_URL || !teacherSession) return;
     try {
-      const res = await fetch(`${WEB_APP_URL}?action=results&session=${encodeURIComponent(teacherSession)}`);
+      const res = await fetch(`${WEB_APP_URL}?action=results&session=${encodeURIComponent(teacherSession)}&key=${encodeURIComponent(SHARED_SECRET)}`);
       const data = await res.json();
       renderTeacher(data);
       document.getElementById("teacherStatus").className = "submit-status ok";
@@ -889,9 +964,9 @@
     if (window.QRCode && QRCode.toCanvas) {
       const c = document.createElement("canvas");
       qrEl.appendChild(c);
-      QRCode.toCanvas(c, url, { width: 240, margin: 1 }, () => {});
+      QRCode.toCanvas(c, url, { width: 300, margin: 1 }, () => {});
     } else {
-      qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(url)}" />`;
+      qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
     history.replaceState(null, "", `?role=teacher&session=${sid}`);
     if (!WEB_APP_URL) {
@@ -923,6 +998,29 @@
     document.getElementById("nameField").style.display = "flex";
     document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
     document.getElementById("teacherLink").style.display = "none";
+
+    // Resume from localStorage if present
+    const st = loadState();
+    if (st) {
+      answers = Array.isArray(st.answers) && st.answers.length === QUESTIONS.length ? st.answers : answers;
+      current = Number.isInteger(st.current) ? st.current : 0;
+      attemptId = st.attemptId || "";
+      playerName = st.playerName || "";
+      duration = st.duration || 20;
+      submitted = !!st.submitted;
+      if (submitted) {
+        showResult();
+      } else if (current > 0 || answers.some(a => a !== null)) {
+        document.getElementById("duration").value = duration;
+        if (playerName) document.getElementById("playerName").value = playerName;
+        show("quiz");
+        renderQuestion();
+      } else if (playerName) {
+        document.getElementById("playerName").value = playerName;
+      }
+    }
+    // Try to flush any stuck submissions from a previous session
+    flushQueue();
   }
 </script>
 </body>
