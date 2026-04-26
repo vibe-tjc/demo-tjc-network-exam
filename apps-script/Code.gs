@@ -1,26 +1,43 @@
 // Google Apps Script backend for the network addiction quiz.
+//
 // Setup:
 // 1. Create a new Google Sheet.
 // 2. Extensions → Apps Script. Replace Code.gs contents with this file.
-// 3. Set SHARED_SECRET below to a random string. The same value must be set
-//    in index.html (SHARED_SECRET constant).
+// 3. Set TEACHER_KEY below to a random string (only the teacher uses it).
+//    Students never see this key — they authenticate via per-session tokens.
 // 4. Deploy → New deployment → Type: Web app.
-//    - Execute as: Me
-//    - Who has access: Anyone
+//      Execute as: Me
+//      Who has access: Anyone
 // 5. Copy the Web App URL into index.html (WEB_APP_URL constant).
-// 6. Re-deploy whenever you change this script: Manage deployments → edit → New version.
+// 6. Re-deploy after any change: Manage deployments → edit → New version.
+//
+// Security model:
+//   - Teacher creates a session with TEACHER_KEY. Backend returns a short-lived token.
+//   - QR includes ?session=ABC&token=XYZ.
+//   - Students submit with that token. Backend validates session+token+expiry+count.
+//   - URL leak only exposes one session for at most SESSION_TTL_MS.
 
 const SHEET_NAME = 'Responses';
-const SHARED_SECRET = 'CHANGE_ME_TO_A_RANDOM_STRING';
+const TEACHER_KEY = 'CHANGE_ME_TEACHER_KEY';
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000;     // 4 hours
+const MAX_PER_SESSION = 200;
+const MAX_NAME_LEN = 30;
+const QUESTION_COUNT = 10;
 
 function doGet(e) {
-  const params = (e && e.parameter) || {};
-  const action = params.action || '';
-  const session = params.session || '';
-  const key = params.key || '';
+  const p = (e && e.parameter) || {};
+  const action = p.action || '';
+
+  if (action === 'createSession') {
+    if (p.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
+    return json(createSession());
+  }
   if (action === 'results') {
-    if (key !== SHARED_SECRET) return json({ ok: false, error: 'unauthorized' });
-    return json(getResults(session));
+    if (p.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
+    return json(getResults(p.session || ''));
+  }
+  if (action === 'sessionInfo') {
+    return json(sessionInfo(p.session || ''));
   }
   return json({ ok: true, msg: 'quiz backend alive' });
 }
@@ -34,11 +51,12 @@ function doPost(e) {
   }
   try {
     const data = JSON.parse(e.postData.contents);
-    if (data.key !== SHARED_SECRET) return json({ ok: false, error: 'unauthorized' });
-    const attemptId = String(data.attemptId || '');
-    if (!attemptId) return json({ ok: false, error: 'missing attemptId' });
-    if (attemptIdExists(attemptId)) return json({ ok: true, dedup: true });
-    appendRow(data, attemptId);
+    const v = validateSubmission(data);
+    if (!v.ok) return json(v);
+    if (attemptIdExists(data.attemptId)) return json({ ok: true, dedup: true });
+    const score = data.answers.reduce((a, b) => a + b, 0);
+    appendRow(data, score, data.attemptId);
+    incrementSessionCount(data.session);
     return json({ ok: true });
   } catch (err) {
     return json({ ok: false, error: String(err) });
@@ -46,6 +64,79 @@ function doPost(e) {
     lock.releaseLock();
   }
 }
+
+// --- Session management ---
+
+function createSession() {
+  const code = randomCode(5);
+  const token = randomCode(20);
+  const now = Date.now();
+  const sess = {
+    token: token,
+    createdAt: now,
+    expiresAt: now + SESSION_TTL_MS,
+    count: 0
+  };
+  PropertiesService.getScriptProperties().setProperty('session:' + code, JSON.stringify(sess));
+  return { ok: true, session: code, token: token, expiresAt: sess.expiresAt };
+}
+
+function getSession(code) {
+  if (!code) return null;
+  const raw = PropertiesService.getScriptProperties().getProperty('session:' + code);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+function sessionInfo(code) {
+  const s = getSession(code);
+  if (!s) return { ok: false, error: 'session not found' };
+  return { ok: true, expiresAt: s.expiresAt, count: s.count, full: s.count >= MAX_PER_SESSION };
+}
+
+function incrementSessionCount(code) {
+  const s = getSession(code);
+  if (!s) return;
+  s.count++;
+  PropertiesService.getScriptProperties().setProperty('session:' + code, JSON.stringify(s));
+}
+
+// Optional helper: clean up old sessions. You can run this manually from the editor.
+function cleanupExpiredSessions() {
+  const props = PropertiesService.getScriptProperties();
+  const all = props.getProperties();
+  const now = Date.now();
+  Object.keys(all).forEach(k => {
+    if (k.indexOf('session:') !== 0) return;
+    try {
+      const s = JSON.parse(all[k]);
+      if (now > s.expiresAt + 24 * 60 * 60 * 1000) props.deleteProperty(k);
+    } catch (e) { props.deleteProperty(k); }
+  });
+}
+
+// --- Validation ---
+
+function validateSubmission(data) {
+  if (!data || typeof data !== 'object') return { ok: false, error: 'bad payload' };
+  if (typeof data.session !== 'string' || !data.session) return { ok: false, error: 'missing session' };
+  if (typeof data.token !== 'string' || !data.token) return { ok: false, error: 'missing token' };
+  if (typeof data.attemptId !== 'string' || !data.attemptId) return { ok: false, error: 'missing attemptId' };
+  if (typeof data.name !== 'string') return { ok: false, error: 'bad name' };
+  if (data.name.length > MAX_NAME_LEN) return { ok: false, error: 'name too long' };
+  if (!Array.isArray(data.answers) || data.answers.length !== QUESTION_COUNT) return { ok: false, error: 'bad answers' };
+  if (!data.answers.every(a => a === 0 || a === 1)) return { ok: false, error: 'bad answers' };
+
+  const sess = getSession(data.session);
+  if (!sess) return { ok: false, error: 'session not found' };
+  if (sess.token !== data.token) return { ok: false, error: 'invalid token' };
+  if (Date.now() > sess.expiresAt) return { ok: false, error: 'session expired' };
+  if (sess.count >= MAX_PER_SESSION) return { ok: false, error: 'session full' };
+
+  return { ok: true };
+}
+
+// --- Sheet I/O ---
 
 function attemptIdExists(id) {
   const sheet = getSheet();
@@ -58,14 +149,14 @@ function attemptIdExists(id) {
   return false;
 }
 
-function appendRow(data, attemptId) {
+function appendRow(data, score, attemptId) {
   const sheet = getSheet();
   sheet.appendRow([
     new Date(),
     data.session || '',
-    data.name || '',
-    Number(data.score) || 0,
-    (data.answers || []).join(','),
+    String(data.name || '').slice(0, MAX_NAME_LEN),
+    score,
+    data.answers.join(','),
     attemptId
   ]);
 }
@@ -92,6 +183,15 @@ function getSheet() {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+// --- Utils ---
+
+function randomCode(len) {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  return s;
 }
 
 function json(obj) {

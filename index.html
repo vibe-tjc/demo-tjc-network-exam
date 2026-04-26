@@ -542,7 +542,25 @@
     <div class="actions" style="margin-top:20px">
       <button class="btn-outline" id="newSessionBtn">建立新場次</button>
       <button class="btn-ghost" id="refreshBtn">立即刷新</button>
+      <button class="btn-ghost" id="forgetKeyBtn" style="margin-left:auto">忘記教師密碼</button>
     </div>
+  </div>
+</section>
+
+<!-- Teacher login -->
+<section id="teacherLogin" class="screen">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">🔑</div>
+      <h1 class="card-title">老師驗證</h1>
+      <p class="card-description">請輸入教師密碼（設定在 Apps Script 的 TEACHER_KEY）。密碼只存在這台瀏覽器，學生不需要。</p>
+    </div>
+    <div class="field">
+      <label class="label" for="teacherKeyInput">教師密碼</label>
+      <input id="teacherKeyInput" type="password" autocomplete="current-password" style="height:40px;width:100%;padding:0 12px;border:1px solid var(--input);border-radius:var(--radius);background:var(--background);font-size:0.875rem;font-family:inherit" />
+      <span class="label-hint" id="teacherKeyHint">&nbsp;</span>
+    </div>
+    <button class="btn-primary btn-block" id="teacherKeySubmit">驗證並建立場次</button>
   </div>
 </section>
 
@@ -615,9 +633,12 @@
   // ====== CONFIG ======
   // Paste your Google Apps Script Web App URL here after deployment.
   const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyIrGqCinOHsdGNHUBPMdcFJiKrKINcg4nuAUbx2JNteM-RGrXPovMi6AP38Y_jNHdI/exec";
-  // Must match SHARED_SECRET in apps-script/Code.gs
-  const SHARED_SECRET = "CHANGE_ME_TO_A_RANDOM_STRING";
   // ====================
+  // Note: TEACHER_KEY is NOT stored in this file. The teacher enters it once
+  // in the browser; it lives in localStorage. Students never see/need it.
+  // Students authenticate via per-session tokens (?session=...&token=...).
+
+  const TEACHER_KEY_STORAGE = "quiz:teacherKey";
 
   function uuid() {
     if (crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -629,6 +650,7 @@
   const params = new URLSearchParams(location.search);
   const role = params.get("role");
   const sessionId = params.get("session");
+  const sessionToken = params.get("token");
 
   const QUESTIONS = [
     { emoji: "⏰", text: "你常常上網時間比原本預計的還久嗎？" },
@@ -720,6 +742,8 @@
     });
   });
 
+  let permanentSubmitError = "";
+
   document.getElementById("pauseBtn").addEventListener("click", () => {
     paused = !paused;
     document.getElementById("pauseBtn").textContent = paused ? "▶" : "⏸";
@@ -789,9 +813,26 @@
     renderQuestion();
   }
 
+  function errorMessage(code) {
+    const map = {
+      'session not found': '場次不存在或已關閉',
+      'invalid token': '場次驗證碼錯誤',
+      'session expired': '場次已過期',
+      'session full': '場次人數已滿',
+      'unauthorized': '未授權',
+      'busy, try again': '伺服器繁忙，會重試'
+    };
+    return map[code] || code || '未知錯誤';
+  }
+
   function updateSubmitStatus() {
     const el = document.getElementById("submitStatus");
     if (!el || !sessionId) return;
+    if (permanentSubmitError) {
+      el.textContent = `送出失敗：${errorMessage(permanentSubmitError)}`;
+      el.className = "submit-status err";
+      return;
+    }
     const q = getPending();
     const mine = q.find(p => p.attemptId === attemptId);
     if (!mine) {
@@ -805,29 +846,44 @@
 
   async function trySend(payload) {
     const res = await fetch(WEB_APP_URL, { method: "POST", body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "send failed");
-    return data;
+    return await res.json();
   }
+
+  // Errors that won't be fixed by retrying.
+  const PERMANENT_ERRORS = new Set([
+    'session not found', 'invalid token', 'session expired',
+    'session full', 'unauthorized', 'bad payload', 'missing session',
+    'missing token', 'missing attemptId', 'bad name', 'name too long',
+    'bad score', 'bad answers'
+  ]);
 
   async function flushQueue() {
     if (!WEB_APP_URL) return;
     const q = getPending();
     for (const p of q) {
-      try { await trySend(p); dequeuePending(p.attemptId); }
-      catch (e) { /* keep, retry later */ }
+      try {
+        const r = await trySend(p);
+        if (r.ok) {
+          dequeuePending(p.attemptId);
+        } else if (PERMANENT_ERRORS.has(r.error)) {
+          dequeuePending(p.attemptId);
+          permanentSubmitError = r.error;
+        }
+        // transient errors: keep in queue
+      } catch (e) {
+        // network error: keep in queue
+      }
     }
     updateSubmitStatus();
   }
 
   let retryTimers = [];
   async function submitToBackend(score) {
-    if (!sessionId || !WEB_APP_URL) return;
+    if (!sessionId || !sessionToken || !WEB_APP_URL) return;
     const payload = {
-      key: SHARED_SECRET,
       session: sessionId,
+      token: sessionToken,
       name: playerName,
-      score: score,
       answers: answers,
       attemptId: attemptId
     };
@@ -885,28 +941,39 @@
   }
 
   // ===== Session / Teacher mode =====
-  function randomSession() {
-    const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
-    let s = "";
-    for (let i = 0; i < 5; i++) s += chars[Math.floor(Math.random() * chars.length)];
-    return s;
-  }
-
-  function buildJoinUrl(sid) {
+  function buildJoinUrl(sid, tok) {
     const u = new URL(location.href);
     u.search = "";
     u.searchParams.set("session", sid);
+    if (tok) u.searchParams.set("token", tok);
     return u.toString();
   }
 
+  function getTeacherKey() { return localStorage.getItem(TEACHER_KEY_STORAGE) || ""; }
+  function setTeacherKey(k) { localStorage.setItem(TEACHER_KEY_STORAGE, k); }
+  function clearTeacherKey() { localStorage.removeItem(TEACHER_KEY_STORAGE); }
+
   let teacherSession = null;
+  let teacherToken = null;
   let pollTimer = null;
 
   async function fetchResults() {
     if (!WEB_APP_URL || !teacherSession) return;
     try {
-      const res = await fetch(`${WEB_APP_URL}?action=results&session=${encodeURIComponent(teacherSession)}&key=${encodeURIComponent(SHARED_SECRET)}`);
+      const res = await fetch(`${WEB_APP_URL}?action=results&session=${encodeURIComponent(teacherSession)}&teacherKey=${encodeURIComponent(getTeacherKey())}`);
       const data = await res.json();
+      if (!data.ok) {
+        if (data.error === 'unauthorized') {
+          clearTeacherKey();
+          clearInterval(pollTimer);
+          show("teacherLogin");
+          document.getElementById("teacherKeyHint").textContent = "密碼不正確或已變更";
+          return;
+        }
+        document.getElementById("teacherStatus").className = "submit-status err";
+        document.getElementById("teacherStatus").textContent = errorMessage(data.error);
+        return;
+      }
       renderTeacher(data);
       document.getElementById("teacherStatus").className = "submit-status ok";
       document.getElementById("teacherStatus").textContent = `已連線 · 最後更新 ${new Date().toLocaleTimeString()}`;
@@ -954,9 +1021,10 @@
     return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
 
-  function startTeacher(sid) {
+  function renderTeacherSession(sid, tok) {
     teacherSession = sid;
-    const url = buildJoinUrl(sid);
+    teacherToken = tok;
+    const url = buildJoinUrl(sid, tok);
     document.getElementById("sessionCode").textContent = sid;
     document.getElementById("joinUrl").textContent = url;
     const qrEl = document.getElementById("qrcode");
@@ -968,14 +1036,36 @@
     } else {
       qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
-    history.replaceState(null, "", `?role=teacher&session=${sid}`);
-    if (!WEB_APP_URL) {
-      document.getElementById("teacherStatus").className = "submit-status err";
-      document.getElementById("teacherStatus").textContent = "⚠️ 尚未設定 WEB_APP_URL，請先部署 Apps Script 並填入。";
-    }
+    history.replaceState(null, "", `?role=teacher&session=${sid}&token=${tok}`);
     fetchResults();
     clearInterval(pollTimer);
     pollTimer = setInterval(fetchResults, 4000);
+  }
+
+  async function createNewSession() {
+    if (!WEB_APP_URL) {
+      document.getElementById("teacherStatus").className = "submit-status err";
+      document.getElementById("teacherStatus").textContent = "⚠️ 尚未設定 WEB_APP_URL，請先部署 Apps Script 並填入。";
+      return;
+    }
+    try {
+      const res = await fetch(`${WEB_APP_URL}?action=createSession&teacherKey=${encodeURIComponent(getTeacherKey())}`);
+      const data = await res.json();
+      if (!data.ok) {
+        if (data.error === 'unauthorized') {
+          clearTeacherKey();
+          show("teacherLogin");
+          document.getElementById("teacherKeyHint").textContent = "密碼不正確";
+          return;
+        }
+        alert('建立場次失敗：' + errorMessage(data.error));
+        return;
+      }
+      show("teacher");
+      renderTeacherSession(data.session, data.token);
+    } catch (e) {
+      alert('無法連線後端');
+    }
   }
 
   document.getElementById("copyJoinBtn").addEventListener("click", () => {
@@ -985,19 +1075,46 @@
     const o = b.textContent; b.textContent = "已複製 ✓";
     setTimeout(()=>b.textContent=o, 1400);
   });
-  document.getElementById("newSessionBtn").addEventListener("click", () => {
-    startTeacher(randomSession());
-  });
+  document.getElementById("newSessionBtn").addEventListener("click", createNewSession);
   document.getElementById("refreshBtn").addEventListener("click", fetchResults);
+  document.getElementById("forgetKeyBtn").addEventListener("click", () => {
+    clearTeacherKey();
+    clearInterval(pollTimer);
+    show("teacherLogin");
+    document.getElementById("teacherKeyHint").textContent = "已清除，請重新輸入";
+  });
+
+  document.getElementById("teacherKeySubmit").addEventListener("click", () => {
+    const k = document.getElementById("teacherKeyInput").value.trim();
+    if (!k) { document.getElementById("teacherKeyHint").textContent = "請輸入密碼"; return; }
+    setTeacherKey(k);
+    document.getElementById("teacherKeyInput").value = "";
+    createNewSession();
+  });
+  document.getElementById("teacherKeyInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("teacherKeySubmit").click();
+  });
 
   // ===== Routing =====
   if (role === "teacher") {
-    show("teacher");
-    startTeacher(sessionId || randomSession());
+    if (!getTeacherKey()) {
+      show("teacherLogin");
+    } else if (sessionId && sessionToken) {
+      show("teacher");
+      renderTeacherSession(sessionId, sessionToken);
+    } else {
+      show("teacher");
+      createNewSession();
+    }
   } else if (sessionId) {
     document.getElementById("nameField").style.display = "flex";
     document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
     document.getElementById("teacherLink").style.display = "none";
+    if (!sessionToken) {
+      document.getElementById("introDesc").textContent = `連結缺少場次驗證碼，請請老師重新提供 QR / 連結。`;
+      document.getElementById("startBtn").disabled = true;
+      document.getElementById("startBtn").style.opacity = "0.5";
+    }
 
     // Resume from localStorage if present
     const st = loadState();
