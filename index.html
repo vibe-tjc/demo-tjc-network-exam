@@ -31,10 +31,8 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
-    height: 100%;
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
     color: var(--foreground);
-    overflow: hidden;
     -webkit-font-smoothing: antialiased;
   }
   body {
@@ -42,17 +40,18 @@
     background-image:
       radial-gradient(circle at 1px 1px, hsl(240 5.9% 90%) 1px, transparent 0);
     background-size: 24px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 24px;
+    min-height: 100vh;
+    box-sizing: border-box;
   }
   .screen {
     width: 100%;
     max-width: 728px;
+    margin: 0 auto;
     display: none;
     animation: fadeIn 0.25s ease;
   }
+  .screen.teacher-screen { max-width: 1200px; }
   .screen.active { display: block; }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
@@ -345,9 +344,98 @@
   .teacher-grid {
     display: grid;
     grid-template-columns: 280px 1fr;
-    gap: 20px;
+    gap: 24px;
     align-items: start;
   }
+  .teacher-grid.qr-collapsed { grid-template-columns: 1fr; }
+  .teacher-grid.qr-collapsed .qr-box { display: none; }
+  .teacher-question {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 32px;
+    background: var(--background);
+    margin-bottom: 16px;
+  }
+  .tq-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .tq-emoji { font-size: 4rem; line-height: 1; margin-bottom: 16px; }
+  .tq-text { font-size: 1.85rem; font-weight: 600; line-height: 1.4; margin-bottom: 22px; }
+  .tq-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .tq-bar-row { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
+  .tq-bar-label { width: 36px; font-weight: 600; }
+  .tq-bar-track {
+    flex: 1;
+    height: 18px;
+    background: var(--muted);
+    border-radius: 9px;
+    overflow: hidden;
+    position: relative;
+  }
+  .tq-bar-fill {
+    height: 100%;
+    border-radius: 9px;
+    transition: width 0.4s ease;
+  }
+  .tq-bar-fill.yes { background: hsl(0 72% 51% / 0.8); }
+  .tq-bar-fill.no  { background: hsl(142 71% 45% / 0.75); }
+  .tq-bar-count { width: 60px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tq-nav { display: flex; gap: 8px; justify-content: space-between; }
+  .tq-nav button { flex: 1; }
+  .tq-self {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .tq-self-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    margin-bottom: 8px;
+  }
+  .tq-self-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .tq-self-buttons button {
+    height: 42px;
+    background: var(--background);
+    border: 1px solid var(--border);
+    color: var(--foreground);
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+  .tq-self-buttons button:hover { background: var(--muted); }
+  .tq-self-buttons button.selected {
+    background: var(--foreground);
+    color: var(--background);
+    border-color: var(--foreground);
+  }
+  .tq-self-progress {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+  }
+  .tq-self-progress.done { color: hsl(142 71% 30%); }
   .qr-box {
     display: flex;
     flex-direction: column;
@@ -504,9 +592,6 @@
       <span class="label-hint">時間到會自動進入下一題（5–120 秒）</span>
     </div>
     <button class="btn-primary btn-block" id="startBtn">開始測驗</button>
-    <div style="margin-top:14px;text-align:center">
-      <a href="?role=teacher" id="teacherLink" style="font-size:0.75rem;color:var(--muted-foreground);text-decoration:none">老師模式 →</a>
-    </div>
   </div>
 </section>
 
@@ -518,16 +603,52 @@
       <h1 class="card-title">老師控制台</h1>
       <p class="card-description"><span class="live-dot"></span>學生掃 QR 加入，即時看到結果。</p>
     </div>
-    <div class="teacher-grid">
+    <div class="teacher-grid" id="teacherGrid">
       <div class="qr-box">
         <div id="qrcode"></div>
         <div class="session-code">場次 <span id="sessionCode">—</span></div>
         <div class="join-url" id="joinUrl">—</div>
         <button class="btn-outline" id="copyJoinBtn" style="width:100%;margin-top:4px">複製連結</button>
+        <button class="btn-ghost" id="hideQrBtn" style="width:100%">隱藏 QR</button>
       </div>
       <div>
+        <div class="teacher-question">
+          <div class="tq-meta">
+            <span id="tqIndex">題目 1 / 10</span>
+            <span id="tqStats">0 / 0 人作答</span>
+          </div>
+          <div class="tq-emoji" id="tqEmoji">📱</div>
+          <div class="tq-text" id="tqText">題目內容</div>
+          <div class="tq-bars">
+            <div class="tq-bar-row">
+              <span class="tq-bar-label">是</span>
+              <div class="tq-bar-track"><div class="tq-bar-fill yes" id="tqYesFill" style="width:0%"></div></div>
+              <span class="tq-bar-count" id="tqYesCount">0</span>
+            </div>
+            <div class="tq-bar-row">
+              <span class="tq-bar-label">否</span>
+              <div class="tq-bar-track"><div class="tq-bar-fill no" id="tqNoFill" style="width:0%"></div></div>
+              <span class="tq-bar-count" id="tqNoCount">0</span>
+            </div>
+          </div>
+          <div class="tq-nav">
+            <button class="btn-outline" id="tqPrev">← 上一題</button>
+            <button class="btn-primary" id="tqNext">下一題 →</button>
+          </div>
+          <div class="tq-self">
+            <div class="tq-self-label">老師也作答（選擇指向你自己）</div>
+            <div class="tq-self-buttons">
+              <button id="tqSelfYes" data-val="1">是的，有</button>
+              <button id="tqSelfNo" data-val="0">沒有</button>
+            </div>
+            <div class="tq-self-progress" id="tqSelfProgress">
+              <span id="tqSelfStatus">已作答 0 / 10</span>
+              <button class="btn-primary" id="tqSelfSubmit" style="height:32px;font-size:0.8125rem;padding:0 14px" disabled>送出我的結果</button>
+            </div>
+          </div>
+        </div>
         <div class="stats">
-          <div class="stat"><div class="stat-label">參與人數</div><div class="stat-val" id="statCount">0</div></div>
+          <div class="stat"><div class="stat-label">完成人數</div><div class="stat-val" id="statCount">0</div></div>
           <div class="stat"><div class="stat-label">平均分</div><div class="stat-val" id="statAvg">—</div></div>
           <div class="stat"><div class="stat-label">最高/最低</div><div class="stat-val" id="statRange">—</div></div>
         </div>
@@ -542,6 +663,7 @@
     <div class="actions" style="margin-top:20px">
       <button class="btn-outline" id="newSessionBtn">建立新場次</button>
       <button class="btn-ghost" id="refreshBtn">立即刷新</button>
+      <button class="btn-ghost" id="showQrBtn" style="display:none">顯示 QR</button>
       <button class="btn-ghost" id="forgetKeyBtn" style="margin-left:auto">忘記教師密碼</button>
     </div>
   </div>
@@ -984,8 +1106,66 @@
     }
   }
 
+  let teacherCurrentQ = 0;
+  let lastSubmissions = [];
+  let teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+  let teacherOwnAttemptId = "";
+  let teacherOwnSubmitted = false;
+
+  function resetTeacherOwnQuiz() {
+    teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+    teacherOwnAttemptId = uuid();
+    teacherOwnSubmitted = false;
+  }
+
+  function renderTeacherSelf() {
+    const i = teacherCurrentQ;
+    const yesBtn = document.getElementById("tqSelfYes");
+    const noBtn  = document.getElementById("tqSelfNo");
+    yesBtn.classList.toggle("selected", teacherOwnAnswers[i] === 1);
+    noBtn.classList.toggle("selected",  teacherOwnAnswers[i] === 0);
+    const filled = teacherOwnAnswers.filter(a => a !== null).length;
+    const status = document.getElementById("tqSelfStatus");
+    const submit = document.getElementById("tqSelfSubmit");
+    const wrap = document.getElementById("tqSelfProgress");
+    if (teacherOwnSubmitted) {
+      status.textContent = "已送出 ✓";
+      wrap.classList.add("done");
+      submit.disabled = true;
+      submit.textContent = "已送出";
+      yesBtn.disabled = true; noBtn.disabled = true;
+    } else {
+      status.textContent = `已作答 ${filled} / ${QUESTIONS.length}`;
+      wrap.classList.toggle("done", filled === QUESTIONS.length);
+      submit.disabled = filled !== QUESTIONS.length;
+      submit.textContent = "送出我的結果";
+      yesBtn.disabled = false; noBtn.disabled = false;
+    }
+  }
+
+  function renderTeacherQuestion() {
+    const i = teacherCurrentQ;
+    const q = QUESTIONS[i];
+    document.getElementById("tqIndex").textContent = `題目 ${i + 1} / ${QUESTIONS.length}`;
+    document.getElementById("tqEmoji").textContent = q.emoji;
+    document.getElementById("tqText").textContent = q.text;
+    const yes = lastSubmissions.filter(s => s.answers[i] === 1).length;
+    const no  = lastSubmissions.filter(s => s.answers[i] === 0).length;
+    const total = yes + no;
+    document.getElementById("tqStats").textContent = `${total} 人作答`;
+    document.getElementById("tqYesCount").textContent = yes;
+    document.getElementById("tqNoCount").textContent = no;
+    document.getElementById("tqYesFill").style.width = (total ? (yes / total) * 100 : 0) + "%";
+    document.getElementById("tqNoFill").style.width  = (total ? (no  / total) * 100 : 0) + "%";
+    document.getElementById("tqPrev").disabled = i === 0;
+    document.getElementById("tqNext").disabled = i === QUESTIONS.length - 1;
+    renderTeacherSelf();
+  }
+
   function renderTeacher(data) {
     const subs = data.submissions || [];
+    lastSubmissions = subs;
+    renderTeacherQuestion();
     document.getElementById("statCount").textContent = subs.length;
     if (subs.length) {
       const scores = subs.map(s => s.score);
@@ -1036,6 +1216,9 @@
       qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
     history.replaceState(null, "", `?role=teacher&session=${sid}&token=${tok}`);
+    resetTeacherOwnQuiz();
+    teacherCurrentQ = 0;
+    renderTeacherQuestion();
     fetchResults();
     clearInterval(pollTimer);
     pollTimer = setInterval(fetchResults, 4000);
@@ -1076,6 +1259,67 @@
   });
   document.getElementById("newSessionBtn").addEventListener("click", createNewSession);
   document.getElementById("refreshBtn").addEventListener("click", fetchResults);
+  document.getElementById("tqPrev").addEventListener("click", () => {
+    if (teacherCurrentQ > 0) { teacherCurrentQ--; renderTeacherQuestion(); }
+  });
+  document.getElementById("tqNext").addEventListener("click", () => {
+    if (teacherCurrentQ < QUESTIONS.length - 1) { teacherCurrentQ++; renderTeacherQuestion(); }
+  });
+
+  function selectTeacherAnswer(val) {
+    if (teacherOwnSubmitted) return;
+    teacherOwnAnswers[teacherCurrentQ] = val;
+    renderTeacherSelf();
+    if (teacherCurrentQ < QUESTIONS.length - 1) {
+      setTimeout(() => { teacherCurrentQ++; renderTeacherQuestion(); }, 220);
+    }
+  }
+  document.getElementById("tqSelfYes").addEventListener("click", () => selectTeacherAnswer(1));
+  document.getElementById("tqSelfNo").addEventListener("click",  () => selectTeacherAnswer(0));
+
+  document.getElementById("tqSelfSubmit").addEventListener("click", async () => {
+    if (teacherOwnAnswers.some(a => a === null) || teacherOwnSubmitted) return;
+    if (!teacherSession || !teacherToken) { alert("尚未建立場次"); return; }
+    const btn = document.getElementById("tqSelfSubmit");
+    btn.disabled = true;
+    btn.textContent = "送出中…";
+    try {
+      const r = await trySend({
+        session: teacherSession,
+        token: teacherToken,
+        name: "老師",
+        answers: teacherOwnAnswers,
+        attemptId: teacherOwnAttemptId
+      });
+      if (r.ok) {
+        teacherOwnSubmitted = true;
+        renderTeacherSelf();
+        fetchResults();
+      } else {
+        btn.disabled = false;
+        btn.textContent = "送出我的結果";
+        alert("送出失敗：" + errorMessage(r.error));
+      }
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "送出我的結果";
+      alert("網路錯誤，請重試");
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!screens.teacher.classList.contains("active")) return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === "ArrowRight") document.getElementById("tqNext").click();
+    else if (e.key === "ArrowLeft") document.getElementById("tqPrev").click();
+  });
+  document.getElementById("hideQrBtn").addEventListener("click", () => {
+    document.getElementById("teacherGrid").classList.add("qr-collapsed");
+    document.getElementById("showQrBtn").style.display = "";
+  });
+  document.getElementById("showQrBtn").addEventListener("click", () => {
+    document.getElementById("teacherGrid").classList.remove("qr-collapsed");
+    document.getElementById("showQrBtn").style.display = "none";
+  });
   document.getElementById("forgetKeyBtn").addEventListener("click", () => {
     clearTeacherKey();
     clearInterval(pollTimer);
@@ -1095,7 +1339,10 @@
   });
 
   // ===== Routing =====
-  if (role === "teacher") {
+  // Teacher mode is the default. Students arrive via ?session=X&token=Y from the QR code.
+  // Teacher mode keeps ?role=teacher in the URL to distinguish from student joins.
+  const isTeacher = role === "teacher" || !sessionId;
+  if (isTeacher) {
     if (!getTeacherKey()) {
       show("teacherLogin");
     } else if (sessionId && sessionToken) {
@@ -1108,7 +1355,6 @@
   } else if (sessionId) {
     document.getElementById("nameField").style.display = "flex";
     document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
-    document.getElementById("teacherLink").style.display = "none";
     if (!sessionToken) {
       document.getElementById("introDesc").textContent = `連結缺少場次驗證碼，請請老師重新提供 QR / 連結。`;
       document.getElementById("startBtn").disabled = true;
