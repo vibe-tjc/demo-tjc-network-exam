@@ -344,10 +344,58 @@
   /* Teacher dashboard */
   .teacher-grid {
     display: grid;
-    grid-template-columns: 280px 1fr;
+    grid-template-columns: 260px 1fr;
     gap: 20px;
     align-items: start;
   }
+  .teacher-grid.qr-collapsed { grid-template-columns: 1fr; }
+  .teacher-grid.qr-collapsed .qr-box { display: none; }
+  .teacher-question {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    background: var(--background);
+    margin-bottom: 16px;
+  }
+  .tq-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    margin-bottom: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+  }
+  .tq-emoji { font-size: 3rem; line-height: 1; margin-bottom: 12px; }
+  .tq-text { font-size: 1.4rem; font-weight: 600; line-height: 1.4; margin-bottom: 18px; }
+  .tq-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .tq-bar-row { display: flex; align-items: center; gap: 10px; font-size: 0.875rem; }
+  .tq-bar-label { width: 36px; font-weight: 600; }
+  .tq-bar-track {
+    flex: 1;
+    height: 18px;
+    background: var(--muted);
+    border-radius: 9px;
+    overflow: hidden;
+    position: relative;
+  }
+  .tq-bar-fill {
+    height: 100%;
+    border-radius: 9px;
+    transition: width 0.4s ease;
+  }
+  .tq-bar-fill.yes { background: hsl(0 72% 51% / 0.8); }
+  .tq-bar-fill.no  { background: hsl(142 71% 45% / 0.75); }
+  .tq-bar-count { width: 60px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tq-nav { display: flex; gap: 8px; justify-content: space-between; }
+  .tq-nav button { flex: 1; }
   .qr-box {
     display: flex;
     flex-direction: column;
@@ -518,16 +566,41 @@
       <h1 class="card-title">老師控制台</h1>
       <p class="card-description"><span class="live-dot"></span>學生掃 QR 加入，即時看到結果。</p>
     </div>
-    <div class="teacher-grid">
+    <div class="teacher-grid" id="teacherGrid">
       <div class="qr-box">
         <div id="qrcode"></div>
         <div class="session-code">場次 <span id="sessionCode">—</span></div>
         <div class="join-url" id="joinUrl">—</div>
         <button class="btn-outline" id="copyJoinBtn" style="width:100%;margin-top:4px">複製連結</button>
+        <button class="btn-ghost" id="hideQrBtn" style="width:100%">隱藏 QR</button>
       </div>
       <div>
+        <div class="teacher-question">
+          <div class="tq-meta">
+            <span id="tqIndex">題目 1 / 10</span>
+            <span id="tqStats">0 / 0 人作答</span>
+          </div>
+          <div class="tq-emoji" id="tqEmoji">📱</div>
+          <div class="tq-text" id="tqText">題目內容</div>
+          <div class="tq-bars">
+            <div class="tq-bar-row">
+              <span class="tq-bar-label">是</span>
+              <div class="tq-bar-track"><div class="tq-bar-fill yes" id="tqYesFill" style="width:0%"></div></div>
+              <span class="tq-bar-count" id="tqYesCount">0</span>
+            </div>
+            <div class="tq-bar-row">
+              <span class="tq-bar-label">否</span>
+              <div class="tq-bar-track"><div class="tq-bar-fill no" id="tqNoFill" style="width:0%"></div></div>
+              <span class="tq-bar-count" id="tqNoCount">0</span>
+            </div>
+          </div>
+          <div class="tq-nav">
+            <button class="btn-outline" id="tqPrev">← 上一題</button>
+            <button class="btn-primary" id="tqNext">下一題 →</button>
+          </div>
+        </div>
         <div class="stats">
-          <div class="stat"><div class="stat-label">參與人數</div><div class="stat-val" id="statCount">0</div></div>
+          <div class="stat"><div class="stat-label">完成人數</div><div class="stat-val" id="statCount">0</div></div>
           <div class="stat"><div class="stat-label">平均分</div><div class="stat-val" id="statAvg">—</div></div>
           <div class="stat"><div class="stat-label">最高/最低</div><div class="stat-val" id="statRange">—</div></div>
         </div>
@@ -542,6 +615,7 @@
     <div class="actions" style="margin-top:20px">
       <button class="btn-outline" id="newSessionBtn">建立新場次</button>
       <button class="btn-ghost" id="refreshBtn">立即刷新</button>
+      <button class="btn-ghost" id="showQrBtn" style="display:none">顯示 QR</button>
       <button class="btn-ghost" id="forgetKeyBtn" style="margin-left:auto">忘記教師密碼</button>
     </div>
   </div>
@@ -984,8 +1058,31 @@
     }
   }
 
+  let teacherCurrentQ = 0;
+  let lastSubmissions = [];
+
+  function renderTeacherQuestion() {
+    const i = teacherCurrentQ;
+    const q = QUESTIONS[i];
+    document.getElementById("tqIndex").textContent = `題目 ${i + 1} / ${QUESTIONS.length}`;
+    document.getElementById("tqEmoji").textContent = q.emoji;
+    document.getElementById("tqText").textContent = q.text;
+    const yes = lastSubmissions.filter(s => s.answers[i] === 1).length;
+    const no  = lastSubmissions.filter(s => s.answers[i] === 0).length;
+    const total = yes + no;
+    document.getElementById("tqStats").textContent = `${total} 人作答`;
+    document.getElementById("tqYesCount").textContent = yes;
+    document.getElementById("tqNoCount").textContent = no;
+    document.getElementById("tqYesFill").style.width = (total ? (yes / total) * 100 : 0) + "%";
+    document.getElementById("tqNoFill").style.width  = (total ? (no  / total) * 100 : 0) + "%";
+    document.getElementById("tqPrev").disabled = i === 0;
+    document.getElementById("tqNext").disabled = i === QUESTIONS.length - 1;
+  }
+
   function renderTeacher(data) {
     const subs = data.submissions || [];
+    lastSubmissions = subs;
+    renderTeacherQuestion();
     document.getElementById("statCount").textContent = subs.length;
     if (subs.length) {
       const scores = subs.map(s => s.score);
@@ -1076,6 +1173,26 @@
   });
   document.getElementById("newSessionBtn").addEventListener("click", createNewSession);
   document.getElementById("refreshBtn").addEventListener("click", fetchResults);
+  document.getElementById("tqPrev").addEventListener("click", () => {
+    if (teacherCurrentQ > 0) { teacherCurrentQ--; renderTeacherQuestion(); }
+  });
+  document.getElementById("tqNext").addEventListener("click", () => {
+    if (teacherCurrentQ < QUESTIONS.length - 1) { teacherCurrentQ++; renderTeacherQuestion(); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!screens.teacher.classList.contains("active")) return;
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === "ArrowRight") document.getElementById("tqNext").click();
+    else if (e.key === "ArrowLeft") document.getElementById("tqPrev").click();
+  });
+  document.getElementById("hideQrBtn").addEventListener("click", () => {
+    document.getElementById("teacherGrid").classList.add("qr-collapsed");
+    document.getElementById("showQrBtn").style.display = "";
+  });
+  document.getElementById("showQrBtn").addEventListener("click", () => {
+    document.getElementById("teacherGrid").classList.remove("qr-collapsed");
+    document.getElementById("showQrBtn").style.display = "none";
+  });
   document.getElementById("forgetKeyBtn").addEventListener("click", () => {
     clearTeacherKey();
     clearInterval(pollTimer);
