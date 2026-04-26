@@ -628,11 +628,11 @@
   </div>
 </section>
 
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script>
   // ====== CONFIG ======
   // Paste your Google Apps Script Web App URL here after deployment.
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyIrGqCinOHsdGNHUBPMdcFJiKrKINcg4nuAUbx2JNteM-RGrXPovMi6AP38Y_jNHdI/exec";
+  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyANEVIZfM2jo39o4AZBDxvkLhZR4Dhu9eyMTknC6ZuyQ9AAAT6mHslmo8TcttDM1pI/exec"
   // ====================
   // Note: TEACHER_KEY is NOT stored in this file. The teacher enters it once
   // in the browser; it lives in localStorage. Students never see/need it.
@@ -1029,10 +1029,8 @@
     document.getElementById("joinUrl").textContent = url;
     const qrEl = document.getElementById("qrcode");
     qrEl.innerHTML = "";
-    if (window.QRCode && QRCode.toCanvas) {
-      const c = document.createElement("canvas");
-      qrEl.appendChild(c);
-      QRCode.toCanvas(c, url, { width: 300, margin: 1 }, () => {});
+    if (window.QRCode) {
+      new QRCode(qrEl, { text: url, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
     } else {
       qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
