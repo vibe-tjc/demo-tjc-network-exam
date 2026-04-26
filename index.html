@@ -53,6 +53,7 @@
     display: none;
     animation: fadeIn 0.25s ease;
   }
+  .screen.teacher-screen { max-width: 1200px; }
   .screen.active { display: block; }
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
@@ -344,8 +345,8 @@
   /* Teacher dashboard */
   .teacher-grid {
     display: grid;
-    grid-template-columns: 260px 1fr;
-    gap: 20px;
+    grid-template-columns: 280px 1fr;
+    gap: 24px;
     align-items: start;
   }
   .teacher-grid.qr-collapsed { grid-template-columns: 1fr; }
@@ -353,7 +354,7 @@
   .teacher-question {
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 24px;
+    padding: 32px;
     background: var(--background);
     margin-bottom: 16px;
   }
@@ -368,8 +369,8 @@
     letter-spacing: 0.06em;
     font-weight: 600;
   }
-  .tq-emoji { font-size: 3rem; line-height: 1; margin-bottom: 12px; }
-  .tq-text { font-size: 1.4rem; font-weight: 600; line-height: 1.4; margin-bottom: 18px; }
+  .tq-emoji { font-size: 4rem; line-height: 1; margin-bottom: 16px; }
+  .tq-text { font-size: 1.85rem; font-weight: 600; line-height: 1.4; margin-bottom: 22px; }
   .tq-bars {
     display: flex;
     flex-direction: column;
