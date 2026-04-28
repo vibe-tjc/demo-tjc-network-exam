@@ -12,37 +12,89 @@
 // 6. Re-deploy after any change: Manage deployments → edit → New version.
 //
 // Security model:
-//   - Teacher creates a session with TEACHER_KEY. Backend returns a short-lived token.
+//   - Teacher creates a session with TEACHER_KEY (POST). Backend returns a short-lived token.
 //   - QR includes ?session=ABC&token=XYZ.
-//   - Students submit with that token. Backend validates session+token+expiry+count.
+//   - Students submit with that token. Backend validates session+token+expiry+count+set.
 //   - URL leak only exposes one session for at most SESSION_TTL_MS.
+//
+// Set support:
+//   - Each session is bound to a question set (built-in id or full custom payload).
+//   - Sets are stored inside the session record in PropertiesService.
+//   - Students fetch the set via ?action=getSet (no auth — set definitions are not secret).
 
 const SHEET_NAME = 'Responses';
 const TEACHER_KEY = 'CHANGE_ME_TEACHER_KEY';
 const SESSION_TTL_MS = 4 * 60 * 60 * 1000;     // 4 hours
 const MAX_PER_SESSION = 200;
 const MAX_NAME_LEN = 30;
-const QUESTION_COUNT = 10;
+const MIN_QUESTIONS = 5;
+const MAX_QUESTIONS = 20;
+const LEGACY_QUESTION_COUNT = 10; // for sessions created before set support
+
+const SHEET_HEADERS = ['Time', 'Session', 'Name', 'Score', 'Answers', 'AttemptId', 'Set'];
+
+// Throttling — protects daily Apps Script execution quota against scrapers
+// hammering the public Web App URL. Buckets are 1 minute long.
+// CacheService is much cheaper than PropertiesService and self-expires.
+// If a bucket is exceeded the request is rejected fast, before the lock /
+// spreadsheet write. Frontend retries on transient errors so legit users
+// get through after a brief delay.
+const RATE_LIMIT_WRITE_PER_MIN = 60;   // submissions: ~30 students per class + retries + headroom
+const RATE_LIMIT_READ_PER_MIN  = 300;  // getSet/sessionInfo: many cheap reads on student join
+
+function checkRateLimit(bucket, limit) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const minute = Math.floor(Date.now() / 60000);
+    const key = 'rate:' + bucket + ':' + minute;
+    const current = parseInt(cache.get(key) || '0', 10);
+    if (current >= limit) return false;
+    cache.put(key, String(current + 1), 120); // 2× bucket size to survive overlap
+    return true;
+  } catch (err) {
+    // If CacheService is unavailable, fail open — better to serve than to block.
+    return true;
+  }
+}
 
 function doGet(e) {
   const p = (e && e.parameter) || {};
   const action = p.action || '';
 
-  if (action === 'createSession') {
-    if (p.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
-    return json(createSession());
-  }
   if (action === 'results') {
     if (p.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
     return json(getResults(p.session || ''));
   }
   if (action === 'sessionInfo') {
+    if (!checkRateLimit('read', RATE_LIMIT_READ_PER_MIN)) return json({ ok: false, error: 'rate limited' });
     return json(sessionInfo(p.session || ''));
+  }
+  if (action === 'getSet') {
+    if (!checkRateLimit('read', RATE_LIMIT_READ_PER_MIN)) return json({ ok: false, error: 'rate limited' });
+    return json(getSetForSession(p.session || ''));
   }
   return json({ ok: true, msg: 'quiz backend alive' });
 }
 
 function doPost(e) {
+  // Routing: createSession comes via POST so it can carry a set payload.
+  // Submissions are POST without an ?action= param (legacy behaviour).
+  let body = {};
+  try { body = JSON.parse(e.postData.contents); } catch (err) { return json({ ok: false, error: 'bad payload' }); }
+  const action = (e && e.parameter && e.parameter.action) || body.action || '';
+
+  if (action === 'createSession') {
+    if (body.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
+    return json(createSession(body.set));
+  }
+
+  // Submission path — gate on the global write rate limit before taking the lock.
+  if (!checkRateLimit('write', RATE_LIMIT_WRITE_PER_MIN)) return json({ ok: false, error: 'rate limited' });
+
+  return submitAnswers(body);
+}
+
+function submitAnswers(data) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(15000);
@@ -50,12 +102,13 @@ function doPost(e) {
     return json({ ok: false, error: 'busy, try again' });
   }
   try {
-    const data = JSON.parse(e.postData.contents);
     const v = validateSubmission(data);
     if (!v.ok) return json(v);
     if (attemptIdExists(data.attemptId)) return json({ ok: true, dedup: true });
     const score = data.answers.reduce((a, b) => a + b, 0);
-    appendRow(data, score, data.attemptId);
+    const sess = getSession(data.session);
+    const setId = (sess && sess.set && sess.set.id) || 'adults';
+    appendRow(data, score, data.attemptId, setId);
     incrementSessionCount(data.session);
     return json({ ok: true });
   } catch (err) {
@@ -67,7 +120,9 @@ function doPost(e) {
 
 // --- Session management ---
 
-function createSession() {
+function createSession(setPayload) {
+  const set = normalizeSet(setPayload);
+  if (!set.ok) return set;
   const code = randomCode(5);
   const token = randomCode(20);
   const now = Date.now();
@@ -75,10 +130,55 @@ function createSession() {
     token: token,
     createdAt: now,
     expiresAt: now + SESSION_TTL_MS,
-    count: 0
+    count: 0,
+    set: set.set
   };
   PropertiesService.getScriptProperties().setProperty('session:' + code, JSON.stringify(sess));
-  return { ok: true, session: code, token: token, expiresAt: sess.expiresAt };
+  return { ok: true, session: code, token: token, expiresAt: sess.expiresAt, set: set.set };
+}
+
+function normalizeSet(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, error: 'missing set' };
+  }
+  if (payload.kind === 'builtin') {
+    if (typeof payload.id !== 'string') return { ok: false, error: 'bad set id' };
+    const count = Number(payload.questionCount);
+    if (!Number.isFinite(count) || count < MIN_QUESTIONS || count > MAX_QUESTIONS) {
+      return { ok: false, error: 'bad question count' };
+    }
+    return { ok: true, set: { id: payload.id, kind: 'builtin', questionCount: count } };
+  }
+  if (payload.kind === 'custom') {
+    if (typeof payload.id !== 'string' || !payload.id) return { ok: false, error: 'bad set id' };
+    if (!Array.isArray(payload.questions)) return { ok: false, error: 'bad questions' };
+    if (payload.questions.length < MIN_QUESTIONS || payload.questions.length > MAX_QUESTIONS) {
+      return { ok: false, error: 'bad question count' };
+    }
+    for (let i = 0; i < payload.questions.length; i++) {
+      const q = payload.questions[i];
+      if (!q || typeof q.emoji !== 'string' || typeof q.text !== 'string') {
+        return { ok: false, error: 'bad question at row ' + (i + 1) };
+      }
+    }
+    const rubric = Array.isArray(payload.rubric) ? payload.rubric : [];
+    return {
+      ok: true,
+      set: {
+        id: payload.id,
+        kind: 'custom',
+        title: String(payload.title || '自訂題庫').slice(0, 60),
+        description: String(payload.description || '').slice(0, 200),
+        questions: payload.questions.map(q => ({
+          emoji: String(q.emoji).slice(0, 8),
+          text: String(q.text).slice(0, 120)
+        })),
+        rubric: rubric,
+        questionCount: payload.questions.length
+      }
+    };
+  }
+  return { ok: false, error: 'bad set kind' };
 }
 
 function getSession(code) {
@@ -92,6 +192,14 @@ function sessionInfo(code) {
   const s = getSession(code);
   if (!s) return { ok: false, error: 'session not found' };
   return { ok: true, expiresAt: s.expiresAt, count: s.count, full: s.count >= MAX_PER_SESSION };
+}
+
+function getSetForSession(code) {
+  const s = getSession(code);
+  if (!s) return { ok: false, error: 'session not found' };
+  // Sessions created before set support have no `.set` field — treat as legacy adults set.
+  const set = s.set || { id: 'adults', kind: 'builtin', questionCount: LEGACY_QUESTION_COUNT };
+  return { ok: true, set: set };
 }
 
 function incrementSessionCount(code) {
@@ -124,7 +232,7 @@ function validateSubmission(data) {
   if (typeof data.attemptId !== 'string' || !data.attemptId) return { ok: false, error: 'missing attemptId' };
   if (typeof data.name !== 'string') return { ok: false, error: 'bad name' };
   if (data.name.length > MAX_NAME_LEN) return { ok: false, error: 'name too long' };
-  if (!Array.isArray(data.answers) || data.answers.length !== QUESTION_COUNT) return { ok: false, error: 'bad answers' };
+  if (!Array.isArray(data.answers)) return { ok: false, error: 'bad answers' };
   if (!data.answers.every(a => a === 0 || a === 1)) return { ok: false, error: 'bad answers' };
 
   const sess = getSession(data.session);
@@ -132,6 +240,9 @@ function validateSubmission(data) {
   if (sess.token !== data.token) return { ok: false, error: 'invalid token' };
   if (Date.now() > sess.expiresAt) return { ok: false, error: 'session expired' };
   if (sess.count >= MAX_PER_SESSION) return { ok: false, error: 'session full' };
+
+  const expected = (sess.set && sess.set.questionCount) || LEGACY_QUESTION_COUNT;
+  if (data.answers.length !== expected) return { ok: false, error: 'bad answers' };
 
   return { ok: true };
 }
@@ -149,7 +260,7 @@ function attemptIdExists(id) {
   return false;
 }
 
-function appendRow(data, score, attemptId) {
+function appendRow(data, score, attemptId, setId) {
   const sheet = getSheet();
   sheet.appendRow([
     new Date(),
@@ -157,7 +268,8 @@ function appendRow(data, score, attemptId) {
     String(data.name || '').slice(0, MAX_NAME_LEN),
     score,
     data.answers.join(','),
-    attemptId
+    attemptId,
+    setId || ''
   ]);
 }
 
@@ -169,7 +281,8 @@ function getResults(session) {
     time: r[0] instanceof Date ? r[0].toISOString() : String(r[0]),
     name: String(r[2] || ''),
     score: Number(r[3]) || 0,
-    answers: String(r[4] || '').split(',').filter(Boolean).map(Number)
+    answers: String(r[4] || '').split(',').filter(Boolean).map(Number),
+    set: String(r[6] || '')
   }));
   return { ok: true, session: session, count: submissions.length, submissions: submissions };
 }
@@ -179,8 +292,15 @@ function getSheet() {
   let sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    sheet.appendRow(['Time', 'Session', 'Name', 'Score', 'Answers', 'AttemptId']);
+    sheet.appendRow(SHEET_HEADERS);
     sheet.setFrozenRows(1);
+    return sheet;
+  }
+  // Migrate older sheets that pre-date the Set column.
+  const lastCol = sheet.getLastColumn();
+  if (lastCol < SHEET_HEADERS.length) {
+    sheet.getRange(1, lastCol + 1, 1, SHEET_HEADERS.length - lastCol)
+      .setValues([SHEET_HEADERS.slice(lastCol)]);
   }
   return sheet;
 }

@@ -575,6 +575,133 @@
   .submit-status.ok { color: hsl(142 71% 30%); }
   .submit-status.err { color: var(--destructive); }
 
+  /* Set picker */
+  .set-picker {
+    margin-bottom: 24px;
+  }
+  .set-picker-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .set-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .set-card {
+    position: relative;
+    padding: 14px 14px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--background);
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+    height: auto;
+    display: block;
+    white-space: normal;
+  }
+  .set-card:hover { background: var(--muted); }
+  .set-card.selected {
+    border-color: var(--foreground);
+    box-shadow: 0 0 0 2px hsl(240 5.9% 10% / 0.08);
+    background: var(--background);
+  }
+  .set-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+  .set-card-sub {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    line-height: 1.4;
+  }
+  .set-card-tag {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font-size: 0.65rem;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .set-card .set-card-actions {
+    display: none;
+    margin-top: 8px;
+    gap: 6px;
+  }
+  .set-card.selected .set-card-actions { display: flex; }
+  .set-card-actions button {
+    height: 26px;
+    padding: 0 8px;
+    font-size: 0.7rem;
+  }
+  .set-card.add-card {
+    border-style: dashed;
+    color: var(--muted-foreground);
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 76px;
+  }
+  .session-set-line {
+    margin-bottom: 18px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--muted);
+    font-size: 0.875rem;
+    color: var(--muted-foreground);
+  }
+  .session-set-line strong {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+
+  /* Import UI */
+  .import-help {
+    margin: 14px 0 18px;
+    padding: 12px 14px;
+    background: var(--muted);
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    line-height: 1.5;
+  }
+  .import-help code {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 0.78rem;
+    background: var(--background);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .csv-error {
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: hsl(0 72% 51% / 0.08);
+    border: 1px solid hsl(0 72% 51% / 0.25);
+    color: hsl(0 72% 35%);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    display: none;
+  }
+  .csv-error.show { display: block; }
+
+  /* Breakdown is now dynamic per set length — defaults set inline. */
+
   @media (max-width: 720px) {
     .teacher-grid { grid-template-columns: 1fr; }
     .screen.teacher-screen { max-width: 560px; }
@@ -582,7 +709,6 @@
   @media (max-width: 520px) {
     .card { padding: 28px; }
     .answers { grid-template-columns: 1fr; }
-    .breakdown { grid-template-columns: repeat(5, 1fr); }
     .q-text { font-size: 1.45rem; }
   }
 </style>
@@ -595,7 +721,14 @@
     <div class="card-header">
       <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">📱</div>
       <h1 class="card-title">你有網路成癮嗎？</h1>
-      <p class="card-description" id="introDesc">10 題小測驗，誠實回答，看看你和網路的關係。</p>
+      <p class="card-description" id="introDesc">小測驗，誠實回答，看看你和網路的關係。</p>
+    </div>
+    <div class="session-set-line" id="sessionSetLine" style="display:none">
+      本場次題目：<strong id="sessionSetTitle">—</strong>
+    </div>
+    <div class="set-picker" id="setPicker">
+      <div class="set-picker-label">選擇題目</div>
+      <div class="set-grid" id="setGrid"></div>
     </div>
     <div class="field" id="nameField" style="display:none">
       <label class="label" for="playerName">你的名字 / 暱稱</label>
@@ -611,13 +744,43 @@
   </div>
 </section>
 
+<!-- CSV import -->
+<section id="importSet" class="screen">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">📥</div>
+      <h1 class="card-title">匯入自訂題庫</h1>
+      <p class="card-description">用 Excel 或 Google Sheet 編輯題目，另存成 CSV 後上傳。</p>
+    </div>
+    <div class="field">
+      <label class="label" for="importTitle">題庫名稱（可省略）</label>
+      <input id="importTitle" type="text" maxlength="60" placeholder="例如：國中健康教育" style="height:40px;width:100%;padding:0 12px;border:1px solid var(--input);border-radius:var(--radius);background:var(--background);font-size:0.875rem;font-family:inherit" />
+      <span class="label-hint">省略時會用檔名或 CSV 中的標題</span>
+    </div>
+    <div class="field">
+      <label class="label" for="importFile">CSV 檔案</label>
+      <input id="importFile" type="file" accept=".csv,text/csv" style="font-size:0.875rem" />
+    </div>
+    <div class="import-help">
+      格式：兩欄 <code>emoji,question</code>，5 ～ 20 題，UTF-8。<br>
+      可選：第一行加 <code># title: 名稱</code> 等註解。<br>
+      <button class="btn-ghost" id="downloadTemplateBtn" style="margin-top:6px;height:30px;font-size:0.78rem;padding:0 12px">下載範本 CSV</button>
+    </div>
+    <div class="csv-error" id="csvError"></div>
+    <div class="actions">
+      <button class="btn-primary" id="importConfirmBtn">匯入</button>
+      <button class="btn-outline" id="importCancelBtn">取消</button>
+    </div>
+  </div>
+</section>
+
 <!-- Teacher dashboard -->
 <section id="teacher" class="screen teacher-screen">
   <div class="card">
     <div class="card-header">
       <div style="font-size:1.5rem;margin-bottom:8px;line-height:1">👩‍🏫</div>
       <h1 class="card-title">網路使用習慣調查表</h1>
-      <p class="card-description"><span class="live-dot"></span>可以掃 QR 加入一起測驗。</p>
+      <p class="card-description"><span class="live-dot"></span>可以掃 QR 加入一起測驗。<span id="teacherTitle" style="margin-left:10px;font-size:0.85em;color:var(--foreground);font-weight:600"></span></p>
     </div>
     <div class="teacher-grid" id="teacherGrid">
       <div class="qr-box">
@@ -689,6 +852,25 @@
       <button class="btn-ghost" id="showQrBtn" style="display:none">顯示 QR</button>
       <button class="btn-ghost" id="forgetKeyBtn" style="margin-left:auto">忘記教師密碼</button>
     </div>
+  </div>
+</section>
+
+<!-- Teacher choose set -->
+<section id="chooseSet" class="screen">
+  <div class="card">
+    <div class="card-header">
+      <div style="font-size:1.75rem;margin-bottom:12px;line-height:1">📚</div>
+      <h1 class="card-title">選擇本場次題目</h1>
+      <p class="card-description">學生會看到你選的這份題目。</p>
+    </div>
+    <div class="set-picker">
+      <div class="set-grid" id="teacherSetGrid"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-primary" id="createSessionBtn">建立場次</button>
+      <button class="btn-ghost" id="chooseSetBackBtn">返回</button>
+    </div>
+    <div class="submit-status" id="chooseSetStatus" style="margin-top:14px"></div>
   </div>
 </section>
 
@@ -777,7 +959,7 @@
 <script>
   // ====== CONFIG ======
   // Paste your Google Apps Script Web App URL here after deployment.
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyANEVIZfM2jo39o4AZBDxvkLhZR4Dhu9eyMTknC6ZuyQ9AAAT6mHslmo8TcttDM1pI/exec"
+  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwwdUGR7jgZTA4ij5Ct6RThnC4vKTbsUK5x6HqPMSmyWbaKHZHdLhISTS5jJFUHrllv/exec'
   // ====================
   // Note: TEACHER_KEY is NOT stored in this file. The teacher enters it once
   // in the browser; it lives in localStorage. Students never see/need it.
@@ -797,18 +979,104 @@
   const sessionId = params.get("session");
   const sessionToken = params.get("token");
 
-  const QUESTIONS = [
-    { emoji: "⏰", text: "你常常上網時間比原本預計的還久嗎？" },
-    { emoji: "🍱", text: "你曾因為上網而忽略吃飯、睡覺或重要的事嗎？" },
-    { emoji: "📲", text: "一早起床第一件事就是檢查手機或社群嗎？" },
-    { emoji: "😤", text: "如果無法上網，會感到焦躁、不安或心情低落嗎？" },
-    { emoji: "🤫", text: "你曾向家人或朋友隱瞞自己的上網時間嗎？" },
-    { emoji: "💤", text: "上網時間影響到你的睡眠品質或精神狀態嗎？" },
-    { emoji: "📚", text: "上網讓你的工作、學業或成績明顯下滑嗎？" },
-    { emoji: "🙈", text: "你會用上網來逃避煩惱、壓力或負面情緒嗎？" },
-    { emoji: "🔁", text: "你曾試圖減少上網時間但失敗了嗎？" },
-    { emoji: "👥", text: "你寧可上網也不願意和真實朋友家人相處嗎？" }
+  // ===== Question sets =====
+  const MIN_QUESTIONS = 5;
+  const MAX_QUESTIONS = 20;
+  const ADULT_RUBRIC = [
+    { min: 8, level: "重度網路成癮", emoji: "🚨", cls: "level-bad",
+      desc: "你的網路依賴程度偏高，建議認真規劃離線時光，必要時尋求專業協助。" },
+    { min: 4, level: "輕度網路成癮", emoji: "⚠️", cls: "level-warn",
+      desc: "有點黏網路了。試著設定使用時間、培養離線興趣，平衡生活節奏。" },
+    { min: 0, level: "健康使用", emoji: "🌿", cls: "level-good",
+      desc: "你和網路保持著健康距離，繼續享受真實世界的美好。" }
   ];
+  const BUILTIN_SETS = {
+    adults: {
+      id: "adults",
+      kind: "builtin",
+      title: "一般",
+      subtitle: "10 題經典版（原來的題目）",
+      questions: [
+        { emoji: "⏰", text: "你常常上網時間比原本預計的還久嗎？" },
+        { emoji: "🍱", text: "你曾因為上網而忽略吃飯、睡覺或重要的事嗎？" },
+        { emoji: "📲", text: "一早起床第一件事就是檢查手機或社群嗎？" },
+        { emoji: "😤", text: "如果無法上網，會感到焦躁、不安或心情低落嗎？" },
+        { emoji: "🤫", text: "你曾向家人或朋友隱瞞自己的上網時間嗎？" },
+        { emoji: "💤", text: "上網時間影響到你的睡眠品質或精神狀態嗎？" },
+        { emoji: "📚", text: "上網讓你的工作、學業或成績明顯下滑嗎？" },
+        { emoji: "🙈", text: "你會用上網來逃避煩惱、壓力或負面情緒嗎？" },
+        { emoji: "🔁", text: "你曾試圖減少上網時間但失敗了嗎？" },
+        { emoji: "👥", text: "你寧可上網也不願意和真實朋友家人相處嗎？" }
+      ],
+      rubric: ADULT_RUBRIC
+    },
+    kids: {
+      id: "kids",
+      kind: "builtin",
+      title: "國小以下",
+      subtitle: "10 題給小朋友的版本",
+      questions: [
+        { emoji: "🎮", text: "你常常玩手機或平板比原本想的還久嗎？" },
+        { emoji: "🍚", text: "你曾經因為玩遊戲或看影片忘記吃飯嗎？" },
+        { emoji: "📱", text: "一早起床第一件事就是想拿手機或平板嗎？" },
+        { emoji: "😢", text: "不能玩手機或平板的時候，你會生氣或難過嗎？" },
+        { emoji: "🤐", text: "你會偷偷玩手機，不讓爸媽知道嗎？" },
+        { emoji: "😴", text: "你會因為玩太久而很晚才睡覺嗎？" },
+        { emoji: "📚", text: "你會因為想玩，而不想寫作業或讀書嗎？" },
+        { emoji: "😟", text: "心情不好的時候，你會用玩手機讓自己開心嗎？" },
+        { emoji: "⏳", text: "爸媽說「再玩 5 分鐘」，你常常停不下來嗎？" },
+        { emoji: "🧒", text: "你比較想玩手機，比較不想跟家人或朋友玩嗎？" }
+      ],
+      rubric: [
+        { min: 8, level: "需要爸媽幫忙", emoji: "🚨", cls: "level-bad",
+          desc: "玩手機已經占走很多時間了，可以和大人一起想辦法找新的有趣活動。" },
+        { min: 4, level: "要小心囉", emoji: "⚠️", cls: "level-warn",
+          desc: "有時候會玩太久，記得休息眼睛、多和家人聊聊天。" },
+        { min: 0, level: "很棒喔", emoji: "🌿", cls: "level-good",
+          desc: "你能控制玩手機的時間，繼續保持。" }
+      ]
+    }
+  };
+
+  const CUSTOM_SETS_KEY = "quiz:customSets";
+  function loadCustomSets() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CUSTOM_SETS_KEY) || "{}");
+      // Filter out anything that doesn't pass a basic shape check
+      const out = {};
+      Object.keys(raw).forEach(id => {
+        const s = raw[id];
+        if (s && Array.isArray(s.questions) && s.questions.length >= MIN_QUESTIONS && s.questions.length <= MAX_QUESTIONS) {
+          out[id] = s;
+        }
+      });
+      return out;
+    } catch { return {}; }
+  }
+  function saveCustomSets(map) { localStorage.setItem(CUSTOM_SETS_KEY, JSON.stringify(map)); }
+  function listAllSets() {
+    const out = [];
+    Object.values(BUILTIN_SETS).forEach(s => out.push(s));
+    const custom = loadCustomSets();
+    Object.values(custom).forEach(s => out.push(s));
+    return out;
+  }
+  function findSetById(id) {
+    if (!id) return null;
+    if (BUILTIN_SETS[id]) return BUILTIN_SETS[id];
+    const custom = loadCustomSets();
+    return custom[id] || null;
+  }
+
+  // The set in use during the current run. Set by routing or user choice.
+  let activeSet = BUILTIN_SETS.adults;
+  function setActiveSet(setOrId) {
+    const s = typeof setOrId === "string" ? findSetById(setOrId) : setOrId;
+    if (s) activeSet = s;
+  }
+  function getActiveSet() { return activeSet; }
+
+  function questionCount() { return activeSet.questions.length; }
 
   const screens = {
     intro: document.getElementById("intro"),
@@ -816,7 +1084,9 @@
     done: document.getElementById("done"),
     result: document.getElementById("result"),
     teacher: document.getElementById("teacher"),
-    teacherLogin: document.getElementById("teacherLogin")
+    teacherLogin: document.getElementById("teacherLogin"),
+    chooseSet: document.getElementById("chooseSet"),
+    importSet: document.getElementById("importSet")
   };
   const show = (name) => {
     Object.values(screens).forEach(s => s.classList.remove("active"));
@@ -824,7 +1094,7 @@
   };
 
   let current = 0;
-  let answers = new Array(QUESTIONS.length).fill(null);
+  let answers = new Array(questionCount()).fill(null);
   let duration = 20;
   let playerName = "";
   let submitted = false;
@@ -836,7 +1106,7 @@
   function saveState() {
     if (!STATE_KEY) return;
     localStorage.setItem(STATE_KEY, JSON.stringify({
-      current, answers, attemptId, playerName, duration, submitted
+      current, answers, attemptId, playerName, duration, submitted, setId: activeSet.id
     }));
   }
   function loadState() {
@@ -869,7 +1139,7 @@
     }
     duration = Math.max(5, Math.min(120, parseInt(document.getElementById("duration").value) || 20));
     current = 0;
-    answers.fill(null);
+    answers = new Array(questionCount()).fill(null);
     submitted = false;
     attemptId = uuid();
     saveState();
@@ -900,8 +1170,9 @@
     show("intro");
   });
   document.getElementById("shareBtn").addEventListener("click", () => {
+    const total = getActiveSet().questions.length;
     const score = answers.filter(a => a === 1).length;
-    const text = `我做了網路成癮測驗，得分 ${score}/10！你也來測測看 👉`;
+    const text = `我做了網路成癮測驗，得分 ${score}/${total}！你也來測測看 👉`;
     if (navigator.share) {
       navigator.share({ title: "網路成癮測驗", text, url: location.href }).catch(()=>{});
     } else {
@@ -914,12 +1185,13 @@
   });
 
   function renderQuestion() {
-    const q = QUESTIONS[current];
+    const set = getActiveSet();
+    const q = set.questions[current];
     document.getElementById("qEmoji").textContent = q.emoji;
     document.getElementById("qText").textContent = q.text;
     document.getElementById("qNum").textContent = `Question ${current + 1}`;
-    document.getElementById("progressText").textContent = `${current + 1} / ${QUESTIONS.length}`;
-    document.getElementById("progressFill").style.width = ((current) / QUESTIONS.length * 100) + "%";
+    document.getElementById("progressText").textContent = `${current + 1} / ${set.questions.length}`;
+    document.getElementById("progressFill").style.width = ((current) / set.questions.length * 100) + "%";
     document.querySelectorAll(".answers button").forEach(b => {
       b.classList.remove("selected");
       if (answers[current] === parseInt(b.dataset.val)) b.classList.add("selected");
@@ -951,7 +1223,7 @@
     clearInterval(timerId);
     if (answers[current] === null) answers[current] = 0;
     current++;
-    if (current >= QUESTIONS.length) {
+    if (current >= getActiveSet().questions.length) {
       document.getElementById("progressFill").style.width = "100%";
       show("done");
       return;
@@ -966,7 +1238,8 @@
       'session expired': '場次已過期',
       'session full': '場次人數已滿',
       'unauthorized': '未授權',
-      'busy, try again': '伺服器繁忙，會重試'
+      'busy, try again': '伺服器繁忙，會重試',
+      'rate limited': '伺服器繁忙，稍後重試'
     };
     return map[code] || code || '未知錯誤';
   }
@@ -1044,18 +1317,24 @@
 
   window.addEventListener("online", flushQueue);
 
-  function assessScore(score) {
-    if (score >= 8) return { level: "重度網路成癮", emoji: "🚨", cls: "level-bad", desc: "你的網路依賴程度偏高，建議認真規劃離線時光，必要時尋求專業協助。" };
-    if (score >= 4) return { level: "輕度網路成癮", emoji: "⚠️", cls: "level-warn", desc: "有點黏網路了。試著設定使用時間、培養離線興趣，平衡生活節奏。" };
-    return { level: "健康使用", emoji: "🌿", cls: "level-good", desc: "你和網路保持著健康距離，繼續享受真實世界的美好。" };
+  function assessScore(score, rubric) {
+    const r = (rubric || ADULT_RUBRIC).slice().sort((a, b) => b.min - a.min);
+    for (const bucket of r) {
+      if (score >= bucket.min) return bucket;
+    }
+    return r[r.length - 1];
   }
 
   function showResult() {
+    const set = getActiveSet();
+    const total = set.questions.length;
     const score = answers.filter(a => a === 1).length;
     submitToBackend(score);
     document.getElementById("scoreNum").textContent = score;
+    const totalEl = document.querySelector("#result .result-score .total");
+    if (totalEl) totalEl.textContent = ` / ${total}`;
 
-    const { level, desc, emoji, cls } = assessScore(score);
+    const { level, desc, emoji, cls } = assessScore(score, set.rubric);
 
     document.getElementById("resultEmoji").textContent = emoji;
     const lvl = document.getElementById("resultLevel");
@@ -1065,7 +1344,8 @@
 
     const bd = document.getElementById("breakdown");
     bd.innerHTML = "";
-    QUESTIONS.forEach((q, i) => {
+    bd.style.gridTemplateColumns = `repeat(${Math.min(total, 10)}, 1fr)`;
+    set.questions.forEach((q, i) => {
       const d = document.createElement("div");
       d.className = "dot" + (answers[i] === 1 ? " hit" : "");
       d.textContent = q.emoji;
@@ -1077,11 +1357,12 @@
   }
 
   // ===== Session / Teacher mode =====
-  function buildJoinUrl(sid, tok) {
+  function buildJoinUrl(sid, tok, setId) {
     const u = new URL(location.href);
     u.search = "";
     u.searchParams.set("session", sid);
     if (tok) u.searchParams.set("token", tok);
+    if (setId && BUILTIN_SETS[setId]) u.searchParams.set("set", setId);
     return u.toString();
   }
 
@@ -1121,17 +1402,19 @@
 
   let teacherCurrentQ = 0;
   let lastSubmissions = [];
-  let teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+  let teacherOwnAnswers = new Array(questionCount()).fill(null);
   let teacherOwnAttemptId = "";
   let teacherOwnSubmitted = false;
 
   function resetTeacherOwnQuiz() {
-    teacherOwnAnswers = new Array(QUESTIONS.length).fill(null);
+    teacherOwnAnswers = new Array(questionCount()).fill(null);
     teacherOwnAttemptId = uuid();
     teacherOwnSubmitted = false;
   }
 
   function renderTeacherSelf() {
+    const set = getActiveSet();
+    const total = set.questions.length;
     const i = teacherCurrentQ;
     const yesBtn = document.getElementById("tqSelfYes");
     const noBtn  = document.getElementById("tqSelfNo");
@@ -1149,8 +1432,10 @@
       submit.textContent = "已送出";
       yesBtn.disabled = true; noBtn.disabled = true;
       const score = teacherOwnAnswers.filter(a => a === 1).length;
-      const { level, desc, emoji, cls } = assessScore(score);
+      const { level, desc, emoji, cls } = assessScore(score, set.rubric);
       document.getElementById("tqSelfScore").textContent = score;
+      const tqSelfTotal = document.querySelector("#tqSelfResult .head .score");
+      if (tqSelfTotal) tqSelfTotal.innerHTML = `<span id="tqSelfScore">${score}</span> / ${total}`;
       document.getElementById("tqSelfEmoji").textContent = emoji;
       const lvl = document.getElementById("tqSelfLevel");
       lvl.textContent = level;
@@ -1158,9 +1443,9 @@
       document.getElementById("tqSelfDesc").textContent = desc;
       resultBox.classList.add("show");
     } else {
-      status.textContent = `已作答 ${filled} / ${QUESTIONS.length}`;
-      wrap.classList.toggle("done", filled === QUESTIONS.length);
-      submit.disabled = filled !== QUESTIONS.length;
+      status.textContent = `已作答 ${filled} / ${total}`;
+      wrap.classList.toggle("done", filled === total);
+      submit.disabled = filled !== total;
       submit.textContent = "送出我的結果";
       yesBtn.disabled = false; noBtn.disabled = false;
       resultBox.classList.remove("show");
@@ -1168,21 +1453,23 @@
   }
 
   function renderTeacherQuestion() {
+    const set = getActiveSet();
+    const total = set.questions.length;
     const i = teacherCurrentQ;
-    const q = QUESTIONS[i];
-    document.getElementById("tqIndex").textContent = `題目 ${i + 1} / ${QUESTIONS.length}`;
+    const q = set.questions[i];
+    document.getElementById("tqIndex").textContent = `題目 ${i + 1} / ${total}`;
     document.getElementById("tqEmoji").textContent = q.emoji;
     document.getElementById("tqText").textContent = q.text;
     const yes = lastSubmissions.filter(s => s.answers[i] === 1).length;
     const no  = lastSubmissions.filter(s => s.answers[i] === 0).length;
-    const total = yes + no;
-    document.getElementById("tqStats").textContent = `${total} 人作答`;
+    const respondents = yes + no;
+    document.getElementById("tqStats").textContent = `${respondents} 人作答`;
     document.getElementById("tqYesCount").textContent = yes;
     document.getElementById("tqNoCount").textContent = no;
-    document.getElementById("tqYesFill").style.width = (total ? (yes / total) * 100 : 0) + "%";
-    document.getElementById("tqNoFill").style.width  = (total ? (no  / total) * 100 : 0) + "%";
+    document.getElementById("tqYesFill").style.width = (respondents ? (yes / respondents) * 100 : 0) + "%";
+    document.getElementById("tqNoFill").style.width  = (respondents ? (no  / respondents) * 100 : 0) + "%";
     document.getElementById("tqPrev").disabled = i === 0;
-    document.getElementById("tqNext").disabled = i === QUESTIONS.length - 1;
+    document.getElementById("tqNext").disabled = i === total - 1;
     renderTeacherSelf();
   }
 
@@ -1201,8 +1488,10 @@
       document.getElementById("statRange").textContent = "—";
     }
 
-    const buckets = new Array(11).fill(0);
-    subs.forEach(s => { if (s.score >= 0 && s.score <= 10) buckets[s.score]++; });
+    const setLen = getActiveSet().questions.length;
+    const rubric = getActiveSet().rubric;
+    const buckets = new Array(setLen + 1).fill(0);
+    subs.forEach(s => { if (s.score >= 0 && s.score <= setLen) buckets[s.score]++; });
     const max = Math.max(1, ...buckets);
     const chart = document.getElementById("distChart");
     chart.innerHTML = buckets.map(c => `<div class="bar" style="height:${(c/max)*100}%"><span>${c||""}</span></div>`).join("");
@@ -1216,8 +1505,8 @@
       wrap.innerHTML = sorted.map(s => {
         const t = new Date(s.time);
         const tStr = isNaN(t) ? "" : t.toLocaleTimeString();
-        const cls = s.score >= 8 ? "level-bad" : s.score >= 4 ? "level-warn" : "level-good";
-        return `<div class="sub-row"><div class="sub-name">${escapeHtml(s.name||"匿名")}</div><div class="sub-score"><span class="result-level ${cls}">${s.score}/10</span></div><div class="sub-time">${tStr}</div></div>`;
+        const cls = assessScore(s.score, rubric).cls;
+        return `<div class="sub-row"><div class="sub-name">${escapeHtml(s.name||"匿名")}</div><div class="sub-score"><span class="result-level ${cls}">${s.score}/${setLen}</span></div><div class="sub-time">${tStr}</div></div>`;
       }).join("");
     }
   }
@@ -1229,7 +1518,8 @@
   function renderTeacherSession(sid, tok) {
     teacherSession = sid;
     teacherToken = tok;
-    const url = buildJoinUrl(sid, tok);
+    const setId = activeSet.id;
+    const url = buildJoinUrl(sid, tok, setId);
     document.getElementById("sessionCode").textContent = sid;
     document.getElementById("joinUrl").textContent = url;
     const qrEl = document.getElementById("qrcode");
@@ -1239,13 +1529,30 @@
     } else {
       qrEl.innerHTML = `<img alt="qr" src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(url)}" />`;
     }
-    history.replaceState(null, "", `?role=teacher&session=${sid}&token=${tok}`);
+    const teacherUrl = `?role=teacher&session=${sid}&token=${tok}` + (BUILTIN_SETS[setId] ? `&set=${setId}` : "");
+    history.replaceState(null, "", teacherUrl);
+    document.getElementById("teacherTitle").textContent = `題庫：${activeSet.title}`;
     resetTeacherOwnQuiz();
     teacherCurrentQ = 0;
     renderTeacherQuestion();
     fetchResults();
     clearInterval(pollTimer);
     pollTimer = setInterval(fetchResults, 4000);
+  }
+
+  function buildSetPayload(set) {
+    if (set.kind === "builtin") {
+      return { kind: "builtin", id: set.id, questionCount: set.questions.length };
+    }
+    return {
+      kind: "custom",
+      id: set.id,
+      title: set.title,
+      description: set.subtitle || set.description || "",
+      questions: set.questions.map(q => ({ emoji: q.emoji, text: q.text })),
+      rubric: set.rubric || ADULT_RUBRIC,
+      questionCount: set.questions.length
+    };
   }
 
   async function createNewSession() {
@@ -1255,7 +1562,14 @@
       return;
     }
     try {
-      const res = await fetch(`${WEB_APP_URL}?action=createSession&teacherKey=${encodeURIComponent(getTeacherKey())}`);
+      const res = await fetch(WEB_APP_URL, {
+        method: "POST",
+        body: JSON.stringify({
+          action: "createSession",
+          teacherKey: getTeacherKey(),
+          set: buildSetPayload(activeSet)
+        })
+      });
       const data = await res.json();
       if (!data.ok) {
         if (data.error === 'unauthorized') {
@@ -1264,13 +1578,26 @@
           document.getElementById("teacherKeyHint").textContent = "密碼不正確";
           return;
         }
-        alert('建立場次失敗：' + errorMessage(data.error));
+        const msg = '建立場次失敗：' + errorMessage(data.error);
+        const status = document.getElementById("chooseSetStatus");
+        if (status) {
+          status.className = "submit-status err";
+          status.textContent = msg;
+        } else {
+          alert(msg);
+        }
         return;
       }
       show("teacher");
       renderTeacherSession(data.session, data.token);
     } catch (e) {
-      alert('無法連線後端');
+      const status = document.getElementById("chooseSetStatus");
+      if (status) {
+        status.className = "submit-status err";
+        status.textContent = '無法連線後端';
+      } else {
+        alert('無法連線後端');
+      }
     }
   }
 
@@ -1287,14 +1614,14 @@
     if (teacherCurrentQ > 0) { teacherCurrentQ--; renderTeacherQuestion(); }
   });
   document.getElementById("tqNext").addEventListener("click", () => {
-    if (teacherCurrentQ < QUESTIONS.length - 1) { teacherCurrentQ++; renderTeacherQuestion(); }
+    if (teacherCurrentQ < questionCount() - 1) { teacherCurrentQ++; renderTeacherQuestion(); }
   });
 
   function selectTeacherAnswer(val) {
     if (teacherOwnSubmitted) return;
     teacherOwnAnswers[teacherCurrentQ] = val;
     renderTeacherSelf();
-    if (teacherCurrentQ < QUESTIONS.length - 1) {
+    if (teacherCurrentQ < questionCount() - 1) {
       setTimeout(() => { teacherCurrentQ++; renderTeacherQuestion(); }, 220);
     }
   }
@@ -1356,27 +1683,345 @@
     if (!k) { document.getElementById("teacherKeyHint").textContent = "請輸入密碼"; return; }
     setTeacherKey(k);
     document.getElementById("teacherKeyInput").value = "";
-    createNewSession();
+    goToChooseSet();
   });
   document.getElementById("teacherKeyInput").addEventListener("keydown", (e) => {
     if (e.key === "Enter") document.getElementById("teacherKeySubmit").click();
   });
 
+  // ===== Set picker rendering =====
+  function renderSetPicker(gridId, opts) {
+    opts = opts || {};
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    grid.innerHTML = "";
+    const sets = listAllSets();
+    sets.forEach(s => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "set-card" + (activeSet.id === s.id ? " selected" : "");
+      btn.dataset.setId = s.id;
+      const tag = s.kind === "custom" ? '<span class="set-card-tag">自訂</span>' : '';
+      const sub = escapeHtml(s.subtitle || s.description || `${s.questions.length} 題`);
+      let actions = "";
+      if (s.kind === "custom" && opts.allowCustomActions) {
+        actions = `<div class="set-card-actions">
+          <button class="btn-outline set-export" data-id="${s.id}">匯出</button>
+          <button class="btn-ghost set-delete" data-id="${s.id}">刪除</button>
+        </div>`;
+      }
+      btn.innerHTML = `${tag}
+        <div class="set-card-title">${escapeHtml(s.title)}</div>
+        <div class="set-card-sub">${sub}</div>
+        ${actions}`;
+      btn.addEventListener("click", (ev) => {
+        if (ev.target.closest(".set-card-actions")) return;
+        setActiveSet(s.id);
+        renderSetPicker(gridId, opts);
+        if (opts.onChange) opts.onChange(s);
+      });
+      grid.appendChild(btn);
+    });
+    if (opts.allowImport) {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "set-card add-card";
+      add.innerHTML = `<div style="font-size:1.4rem">＋</div><div>匯入 CSV</div>`;
+      add.addEventListener("click", () => openImportSet());
+      grid.appendChild(add);
+    }
+    // Wire custom-set actions if present
+    grid.querySelectorAll(".set-export").forEach(b => {
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = ev.currentTarget.dataset.id;
+        const s = findSetById(id);
+        if (s) downloadCsv(`${s.title}.csv`, exportSetAsCsv(s));
+      });
+    });
+    grid.querySelectorAll(".set-delete").forEach(b => {
+      b.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const id = ev.currentTarget.dataset.id;
+        const map = loadCustomSets();
+        delete map[id];
+        saveCustomSets(map);
+        if (activeSet.id === id) setActiveSet(BUILTIN_SETS.adults);
+        renderSetPicker(gridId, opts);
+      });
+    });
+  }
+
+  // ===== CSV parsing / serializing =====
+  function parseCsv(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // BOM
+    const rows = [];
+    let i = 0, field = "", row = [], inQ = false;
+    while (i < text.length) {
+      const c = text[i];
+      if (inQ) {
+        if (c === '"' && text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        if (c === '"') { inQ = false; i++; continue; }
+        field += c; i++; continue;
+      }
+      if (c === '"') { inQ = true; i++; continue; }
+      if (c === ',') { row.push(field); field = ""; i++; continue; }
+      if (c === '\r') { i++; continue; }
+      if (c === '\n') { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+      field += c; i++;
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function parseSetFromCsv(text, fallbackTitle) {
+    const rows = parseCsv(text);
+    const meta = { title: fallbackTitle || "自訂題庫", description: "", rubric: null };
+    const rubricBuckets = {};
+    const dataRows = [];
+    let sawHeader = false;
+    for (let r = 0; r < rows.length; r++) {
+      const cells = rows[r].map(c => (c || "").trim());
+      if (!cells.length || (cells.length === 1 && !cells[0])) continue;
+      const first = cells[0];
+      if (first.startsWith("#")) {
+        const m = first.replace(/^#\s*/, "");
+        const colon = m.indexOf(":");
+        if (colon > 0) {
+          const k = m.slice(0, colon).trim().toLowerCase();
+          const v = m.slice(colon + 1).trim();
+          if (k === "title") meta.title = v;
+          else if (k === "description") meta.description = v;
+          else if (k === "rubric_high" || k === "rubric_mid" || k === "rubric_low") {
+            // format: min,level,emoji,desc — but cells beyond first are split too
+            const all = [v, ...cells.slice(1)].map(s => (s || "").trim());
+            const min = parseInt(all[0], 10);
+            if (Number.isFinite(min)) {
+              rubricBuckets[k] = { min, level: all[1] || "", emoji: all[2] || "", desc: all[3] || "" };
+            }
+          }
+        }
+        continue;
+      }
+      // Header row — case-insensitive match
+      if (!sawHeader && cells[0].toLowerCase() === "emoji" && (cells[1] || "").toLowerCase() === "question") {
+        sawHeader = true;
+        continue;
+      }
+      if (cells.length < 2) {
+        return { ok: false, error: `第 ${r + 1} 列缺少欄位（需要 emoji 與 question）` };
+      }
+      const emoji = cells[0];
+      const q = cells[1];
+      if (!emoji || !q) {
+        return { ok: false, error: `第 ${r + 1} 列有空白欄位` };
+      }
+      if (Array.from(emoji).length > 4) {
+        return { ok: false, error: `第 ${r + 1} 列的 emoji 過長（最多 4 個字元）` };
+      }
+      if (q.length > 80) {
+        return { ok: false, error: `第 ${r + 1} 列的題目過長（最多 80 字）` };
+      }
+      dataRows.push({ emoji, text: q });
+    }
+    if (dataRows.length < MIN_QUESTIONS || dataRows.length > MAX_QUESTIONS) {
+      return { ok: false, error: `需要 ${MIN_QUESTIONS}–${MAX_QUESTIONS} 題，目前 ${dataRows.length} 題` };
+    }
+    let rubric = ADULT_RUBRIC;
+    if (rubricBuckets.rubric_high || rubricBuckets.rubric_mid || rubricBuckets.rubric_low) {
+      rubric = [];
+      const tag = (b, cls) => b ? { min: b.min, level: b.level, emoji: b.emoji, cls, desc: b.desc } : null;
+      const hi = tag(rubricBuckets.rubric_high, "level-bad");
+      const mid = tag(rubricBuckets.rubric_mid, "level-warn");
+      const lo = tag(rubricBuckets.rubric_low, "level-good");
+      [hi, mid, lo].forEach(b => { if (b) rubric.push(b); });
+      if (!rubric.length) rubric = ADULT_RUBRIC;
+    }
+    return {
+      ok: true,
+      set: {
+        id: "custom:" + simpleHash(meta.title + "|" + dataRows.map(d => d.emoji + d.text).join("|")),
+        kind: "custom",
+        title: meta.title.slice(0, 60),
+        subtitle: meta.description ? meta.description.slice(0, 200) : `${dataRows.length} 題`,
+        questions: dataRows,
+        rubric: rubric
+      }
+    };
+  }
+
+  function simpleHash(str) {
+    let h = 5381;
+    for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function csvEscape(s) {
+    s = String(s);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
+  function exportSetAsCsv(set) {
+    const lines = [];
+    lines.push(`# title: ${set.title}`);
+    if (set.subtitle) lines.push(`# description: ${set.subtitle}`);
+    if (Array.isArray(set.rubric)) {
+      const tags = ["rubric_high", "rubric_mid", "rubric_low"];
+      set.rubric.slice(0, 3).forEach((b, i) => {
+        if (b) lines.push(`# ${tags[i]}: ${b.min},${b.level || ""},${b.emoji || ""},${b.desc || ""}`);
+      });
+    }
+    lines.push("emoji,question");
+    set.questions.forEach(q => lines.push(`${csvEscape(q.emoji)},${csvEscape(q.text)}`));
+    return "﻿" + lines.join("\n") + "\n";
+  }
+
+  function downloadCsv(filename, text) {
+    const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  }
+
+  // ===== Import flow =====
+  let importContext = "intro"; // where to return after import
+  function openImportSet(returnTo) {
+    importContext = returnTo || (screens.chooseSet.classList.contains("active") ? "chooseSet" : "intro");
+    document.getElementById("importTitle").value = "";
+    document.getElementById("importFile").value = "";
+    document.getElementById("csvError").classList.remove("show");
+    show("importSet");
+  }
+  document.getElementById("importCancelBtn").addEventListener("click", () => {
+    show(importContext);
+  });
+  document.getElementById("downloadTemplateBtn").addEventListener("click", () => {
+    const sample = "﻿# title: 我的題庫\n# description: 範例描述\nemoji,question\n⏰,你常常上網超過 1 小時嗎？\n📱,你會在睡前看手機嗎？\n🍱,你曾因為上網忘記吃飯嗎？\n😢,沒手機時你會心情低落嗎？\n📚,上網影響你的功課或工作嗎？\n";
+    downloadCsv("quiz-template.csv", sample);
+  });
+  document.getElementById("importConfirmBtn").addEventListener("click", async () => {
+    const errEl = document.getElementById("csvError");
+    const file = document.getElementById("importFile").files[0];
+    if (!file) {
+      errEl.textContent = "請選擇 CSV 檔案";
+      errEl.classList.add("show");
+      return;
+    }
+    let text;
+    try { text = await file.text(); }
+    catch (e) {
+      errEl.textContent = "無法讀取檔案";
+      errEl.classList.add("show");
+      return;
+    }
+    const fallback = (document.getElementById("importTitle").value || file.name.replace(/\.csv$/i, "")).trim();
+    const result = parseSetFromCsv(text, fallback);
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      errEl.classList.add("show");
+      return;
+    }
+    const map = loadCustomSets();
+    map[result.set.id] = result.set;
+    saveCustomSets(map);
+    setActiveSet(result.set);
+    show(importContext);
+    if (importContext === "chooseSet") {
+      renderSetPicker("teacherSetGrid", { allowImport: false, allowCustomActions: true });
+    } else {
+      renderSetPicker("setGrid", { allowImport: true, allowCustomActions: true });
+    }
+  });
+
+  // ===== Teacher chooseSet wiring =====
+  function goToChooseSet() {
+    setActiveSet(BUILTIN_SETS.adults);
+    document.getElementById("chooseSetStatus").textContent = "";
+    renderSetPicker("teacherSetGrid", { allowImport: true, allowCustomActions: true });
+    show("chooseSet");
+  }
+  document.getElementById("createSessionBtn").addEventListener("click", () => {
+    document.getElementById("chooseSetStatus").textContent = "";
+    createNewSession();
+  });
+  document.getElementById("chooseSetBackBtn").addEventListener("click", () => {
+    show("teacherLogin");
+  });
+
+  // ===== Student set fetch =====
+  async function loadSetForStudentSession() {
+    // Built-in set hint via URL
+    const setParam = params.get("set");
+    if (setParam && BUILTIN_SETS[setParam]) {
+      setActiveSet(BUILTIN_SETS[setParam]);
+    }
+    // Backend is authoritative — fetch the set for the session.
+    if (!WEB_APP_URL || !sessionId) return;
+    // Retry once on rate-limit (backend uses a 1-minute bucket).
+    const delays = [0, 4000];
+    for (const d of delays) {
+      if (d) await new Promise(r => setTimeout(r, d));
+      try {
+        const res = await fetch(`${WEB_APP_URL}?action=getSet&session=${encodeURIComponent(sessionId)}`);
+        const data = await res.json();
+        if (!data.ok) {
+          if (data.error === 'rate limited') continue; // retry after delay
+          return;
+        }
+        const s = data.set;
+        if (!s) return;
+        if (s.kind === "builtin" && BUILTIN_SETS[s.id]) {
+          setActiveSet(BUILTIN_SETS[s.id]);
+        } else if (s.kind === "custom" && Array.isArray(s.questions)) {
+          const customSet = {
+            id: s.id,
+            kind: "custom",
+            title: s.title || "自訂題庫",
+            subtitle: s.description || `${s.questions.length} 題`,
+            questions: s.questions,
+            rubric: Array.isArray(s.rubric) && s.rubric.length ? s.rubric : ADULT_RUBRIC
+          };
+          setActiveSet(customSet);
+        }
+        return;
+      } catch (e) {
+        // fall back silently to whatever activeSet currently is
+        return;
+      }
+    }
+  }
+
   // ===== Routing =====
   // Teacher mode is the default. Students arrive via ?session=X&token=Y from the QR code.
-  // Teacher mode keeps ?role=teacher in the URL to distinguish from student joins.
-  const isTeacher = role === "teacher" || !sessionId;
-  if (isTeacher) {
-    if (!getTeacherKey()) {
+  // Solo mode: ?solo=1 (no backend, just take a quiz locally).
+  const isSolo = role === "solo" || params.get("solo") === "1";
+  const isTeacher = !isSolo && (role === "teacher" || !sessionId);
+  if (isSolo) {
+    renderSetPicker("setGrid", { allowImport: true, allowCustomActions: true });
+    show("intro");
+  } else if (isTeacher) {
+    if (sessionId && sessionToken) {
+      // Resuming a teacher session — restore set from URL hint.
+      const setParam = params.get("set");
+      if (setParam && BUILTIN_SETS[setParam]) setActiveSet(BUILTIN_SETS[setParam]);
+      if (!getTeacherKey()) {
+        show("teacherLogin");
+      } else {
+        show("teacher");
+        renderTeacherSession(sessionId, sessionToken);
+      }
+    } else if (!getTeacherKey()) {
       show("teacherLogin");
-    } else if (sessionId && sessionToken) {
-      show("teacher");
-      renderTeacherSession(sessionId, sessionToken);
     } else {
-      show("teacher");
-      createNewSession();
+      goToChooseSet();
     }
   } else if (sessionId) {
+    // Student joining
+    document.getElementById("setPicker").style.display = "none";
     document.getElementById("nameField").style.display = "flex";
     document.getElementById("introDesc").textContent = `加入場次 ${sessionId}：輸入名字後開始作答，結果會即時送到老師畫面。`;
     if (!sessionToken) {
@@ -1385,28 +2030,47 @@
       document.getElementById("startBtn").style.opacity = "0.5";
     }
 
-    // Resume from localStorage if present
-    const st = loadState();
-    if (st) {
-      answers = Array.isArray(st.answers) && st.answers.length === QUESTIONS.length ? st.answers : answers;
-      current = Number.isInteger(st.current) ? st.current : 0;
-      attemptId = st.attemptId || "";
-      playerName = st.playerName || "";
-      duration = st.duration || 20;
-      submitted = !!st.submitted;
-      if (submitted) {
-        showResult();
-      } else if (current > 0 || answers.some(a => a !== null)) {
-        document.getElementById("duration").value = duration;
-        if (playerName) document.getElementById("playerName").value = playerName;
-        show("quiz");
-        renderQuestion();
-      } else if (playerName) {
-        document.getElementById("playerName").value = playerName;
+    loadSetForStudentSession().then(() => {
+      // Reflect chosen set on the join screen
+      const line = document.getElementById("sessionSetLine");
+      document.getElementById("sessionSetTitle").textContent = activeSet.title;
+      line.style.display = "block";
+      // Resize state arrays in case the active set changed
+      if (answers.length !== questionCount()) {
+        answers = new Array(questionCount()).fill(null);
       }
-    }
-    // Try to flush any stuck submissions from a previous session
-    flushQueue();
+
+      // Resume from localStorage if present
+      const st = loadState();
+      if (st) {
+        const sameSet = !st.setId || st.setId === activeSet.id;
+        if (sameSet) {
+          answers = Array.isArray(st.answers) && st.answers.length === questionCount() ? st.answers : answers;
+          current = Number.isInteger(st.current) ? st.current : 0;
+          attemptId = st.attemptId || "";
+          playerName = st.playerName || "";
+          duration = st.duration || 20;
+          submitted = !!st.submitted;
+          if (submitted) {
+            showResult();
+          } else if (current > 0 || answers.some(a => a !== null)) {
+            document.getElementById("duration").value = duration;
+            if (playerName) document.getElementById("playerName").value = playerName;
+            show("quiz");
+            renderQuestion();
+          } else if (playerName) {
+            document.getElementById("playerName").value = playerName;
+          }
+        } else {
+          // Set changed — discard saved answers, keep the name only.
+          playerName = st.playerName || "";
+          if (playerName) document.getElementById("playerName").value = playerName;
+          clearState();
+        }
+      }
+      // Try to flush any stuck submissions from a previous session
+      flushQueue();
+    });
   }
 </script>
 </body>
