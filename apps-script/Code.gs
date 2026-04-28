@@ -33,6 +33,30 @@ const LEGACY_QUESTION_COUNT = 10; // for sessions created before set support
 
 const SHEET_HEADERS = ['Time', 'Session', 'Name', 'Score', 'Answers', 'AttemptId', 'Set'];
 
+// Throttling — protects daily Apps Script execution quota against scrapers
+// hammering the public Web App URL. Buckets are 1 minute long.
+// CacheService is much cheaper than PropertiesService and self-expires.
+// If a bucket is exceeded the request is rejected fast, before the lock /
+// spreadsheet write. Frontend retries on transient errors so legit users
+// get through after a brief delay.
+const RATE_LIMIT_WRITE_PER_MIN = 60;   // submissions: ~30 students per class + retries + headroom
+const RATE_LIMIT_READ_PER_MIN  = 300;  // getSet/sessionInfo: many cheap reads on student join
+
+function checkRateLimit(bucket, limit) {
+  try {
+    const cache = CacheService.getScriptCache();
+    const minute = Math.floor(Date.now() / 60000);
+    const key = 'rate:' + bucket + ':' + minute;
+    const current = parseInt(cache.get(key) || '0', 10);
+    if (current >= limit) return false;
+    cache.put(key, String(current + 1), 120); // 2× bucket size to survive overlap
+    return true;
+  } catch (err) {
+    // If CacheService is unavailable, fail open — better to serve than to block.
+    return true;
+  }
+}
+
 function doGet(e) {
   const p = (e && e.parameter) || {};
   const action = p.action || '';
@@ -42,9 +66,11 @@ function doGet(e) {
     return json(getResults(p.session || ''));
   }
   if (action === 'sessionInfo') {
+    if (!checkRateLimit('read', RATE_LIMIT_READ_PER_MIN)) return json({ ok: false, error: 'rate limited' });
     return json(sessionInfo(p.session || ''));
   }
   if (action === 'getSet') {
+    if (!checkRateLimit('read', RATE_LIMIT_READ_PER_MIN)) return json({ ok: false, error: 'rate limited' });
     return json(getSetForSession(p.session || ''));
   }
   return json({ ok: true, msg: 'quiz backend alive' });
@@ -61,6 +87,9 @@ function doPost(e) {
     if (body.teacherKey !== TEACHER_KEY) return json({ ok: false, error: 'unauthorized' });
     return json(createSession(body.set));
   }
+
+  // Submission path — gate on the global write rate limit before taking the lock.
+  if (!checkRateLimit('write', RATE_LIMIT_WRITE_PER_MIN)) return json({ ok: false, error: 'rate limited' });
 
   return submitAnswers(body);
 }

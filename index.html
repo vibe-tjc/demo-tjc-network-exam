@@ -959,7 +959,7 @@
 <script>
   // ====== CONFIG ======
   // Paste your Google Apps Script Web App URL here after deployment.
-  const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxO5ZFofhBvnZEccoIFMzC-StZ5ouiCvGbsYdiBeLd2WVm8Z6QNuyLYniGm7kbhkmHE/exec"
+  const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwwdUGR7jgZTA4ij5Ct6RThnC4vKTbsUK5x6HqPMSmyWbaKHZHdLhISTS5jJFUHrllv/exec'
   // ====================
   // Note: TEACHER_KEY is NOT stored in this file. The teacher enters it once
   // in the browser; it lives in localStorage. Students never see/need it.
@@ -1238,7 +1238,8 @@
       'session expired': '場次已過期',
       'session full': '場次人數已滿',
       'unauthorized': '未授權',
-      'busy, try again': '伺服器繁忙，會重試'
+      'busy, try again': '伺服器繁忙，會重試',
+      'rate limited': '伺服器繁忙，稍後重試'
     };
     return map[code] || code || '未知錯誤';
   }
@@ -1960,26 +1961,37 @@
     }
     // Backend is authoritative — fetch the set for the session.
     if (!WEB_APP_URL || !sessionId) return;
-    try {
-      const res = await fetch(`${WEB_APP_URL}?action=getSet&session=${encodeURIComponent(sessionId)}`);
-      const data = await res.json();
-      if (!data.ok || !data.set) return;
-      const s = data.set;
-      if (s.kind === "builtin" && BUILTIN_SETS[s.id]) {
-        setActiveSet(BUILTIN_SETS[s.id]);
-      } else if (s.kind === "custom" && Array.isArray(s.questions)) {
-        const customSet = {
-          id: s.id,
-          kind: "custom",
-          title: s.title || "自訂題庫",
-          subtitle: s.description || `${s.questions.length} 題`,
-          questions: s.questions,
-          rubric: Array.isArray(s.rubric) && s.rubric.length ? s.rubric : ADULT_RUBRIC
-        };
-        setActiveSet(customSet);
+    // Retry once on rate-limit (backend uses a 1-minute bucket).
+    const delays = [0, 4000];
+    for (const d of delays) {
+      if (d) await new Promise(r => setTimeout(r, d));
+      try {
+        const res = await fetch(`${WEB_APP_URL}?action=getSet&session=${encodeURIComponent(sessionId)}`);
+        const data = await res.json();
+        if (!data.ok) {
+          if (data.error === 'rate limited') continue; // retry after delay
+          return;
+        }
+        const s = data.set;
+        if (!s) return;
+        if (s.kind === "builtin" && BUILTIN_SETS[s.id]) {
+          setActiveSet(BUILTIN_SETS[s.id]);
+        } else if (s.kind === "custom" && Array.isArray(s.questions)) {
+          const customSet = {
+            id: s.id,
+            kind: "custom",
+            title: s.title || "自訂題庫",
+            subtitle: s.description || `${s.questions.length} 題`,
+            questions: s.questions,
+            rubric: Array.isArray(s.rubric) && s.rubric.length ? s.rubric : ADULT_RUBRIC
+          };
+          setActiveSet(customSet);
+        }
+        return;
+      } catch (e) {
+        // fall back silently to whatever activeSet currently is
+        return;
       }
-    } catch (e) {
-      // fall back silently to whatever activeSet currently is
     }
   }
 

@@ -65,10 +65,11 @@ const WEB_APP_URL = "https://script.google.com/macros/s/.../exec";
 
 ## 安全與資安
 
-- HTML 不含任何密鑰，repo 公開無妨
+- HTML 不含任何密鑰（`TEACHER_KEY` 只在 Apps Script 後端，學生資料讀取也要這把 key），repo 公開無妨
 - 場次 token 4 小時自動過期；URL 即使外流影響有限
 - 後端驗證 payload 形狀、token、場次容量（單場上限 200 筆）
 - 學生 score 由後端從 answers 重算，不信任 client
+- 後端有 CacheService 全域節流：每分鐘最多 60 筆寫入、300 次讀取，超過直接 fail-fast 不進 spreadsheet（`apps-script/Code.gs` 上方的 `RATE_LIMIT_*` 常數可調）。前端會自動重試，正常使用無感
 
 ## 課堂可靠性
 
